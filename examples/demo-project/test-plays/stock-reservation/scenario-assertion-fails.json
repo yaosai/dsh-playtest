@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "故意将预期设为 6；桩仍返回 7，播放器应真实报断言失败。",
+  "variables": {"expectedRemaining":6},
+  "setup": [],
+  "cleanup": [],
+  "mocks": [{"id":"warehouse","port":0,"routes":[
+    {"method":"GET","path":"/stock","status":200,"body":{"available":10}},
+    {"method":"POST","path":"/reserve","status":200,"body":{"available":7,"reserved":3}}
+  ]}]
+}

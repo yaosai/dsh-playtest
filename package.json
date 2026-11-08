@@ -1,0 +1,22 @@
+{
+  "name": "@local/dsh-playtest",
+  "version": "1.2.0",
+  "description": "Portable business test plays, scenarios and observable execution for DSH.",
+  "private": true,
+  "type": "module",
+  "engines": { "dsh": ">=0.2.2-rc.1 <0.3.0" },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": ["index.js", "host.js", "client.js", "SKILL.md", "README.md", "PROTOCOL.md", "DB-ADAPTER.md", "cordis.patch.yml", "engine/*.py", "examples/demo-project/test-plays/**", "locale/*.json", "icon.svg"],
+  "scripts": {
+    "test:host": "node --test tests/test_host.mjs"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": { "platform": "web", "immediately": true, "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-api-remotes"] }
+  }
+}

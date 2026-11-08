@@ -1,0 +1,21 @@
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 打包产物
+dist/
+*.tgz
+
+# Playtest 运行产物（本地证据，不入库）
+**/.playtest/runs/

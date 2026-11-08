@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "scenarioName": "库存预留 · 播放器示例",
+  "description": "纯本地 HTTP 桩，用于验证播放器的变量、断言和调用次数；不是实际仓储业务验收。",
+  "mode": "baseline",
+  "claims": [{"id":"remaining","description":"示例响应的剩余量应等于场景预期","basis":"示例固定响应，仅验证测试执行器"}],
+  "steps": [
+    {"stepNo":1,"name":"读取库存","type":"http","method":"GET","path":"${mock.warehouse.url}/stock","expect":{"status":200,"json":{"$.available":10}},"extractFromResponse":{"before":"$.available"}},
+    {"stepNo":2,"name":"发起预留","type":"http","method":"POST","path":"${mock.warehouse.url}/reserve","body":{"quantity":3},"expect":{"status":200,"json":{"$.available":"${expectedRemaining}","$.reserved":3}}},
+    {"stepNo":3,"name":"确认桩确实收到一次请求","type":"mockVerify","mock":"warehouse","method":"POST","path":"/reserve","count":1}
+  ]
+}

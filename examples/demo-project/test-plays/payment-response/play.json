@@ -1,0 +1,11 @@
+{
+  "version":1,
+  "scenarioName":"支付响应 · 播放器示例",
+  "description":"同一剧本切换拒绝/成功场景，检验非 2xx 显式断言与 HTTP mock；不调用真实支付系统。",
+  "mode":"baseline",
+  "claims":[{"id":"response","description":"响应应与选定场景一致","basis":"本地固定桩，只证明播放器按预期比较"}],
+  "steps":[
+    {"stepNo":1,"name":"提交支付请求","type":"http","method":"POST","path":"${mock.payment.url}/payments","body":{"amount":100},"expect":{"status":"${expectedStatus}","json":{"$.code":"${expectedCode}"}}},
+    {"stepNo":2,"name":"确认支付请求到达桩","type":"mockVerify","mock":"payment","method":"POST","path":"/payments","count":1}
+  ]
+}

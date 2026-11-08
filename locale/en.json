@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Playtest",
+    "description": "Runs portable test plays with separate scenarios, HTTP mocks, explicit assertions and an observable step-by-step view. Uses the existing agent and DSH permissions."
+  }
+}

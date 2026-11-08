@@ -1,0 +1,5 @@
+- insert:
+    - id: dsh-playtest
+      name: '@local/dsh-playtest'
+      config:
+        pythonPath: python3

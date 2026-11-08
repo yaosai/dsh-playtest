@@ -1,0 +1,7 @@
+{
+  "version":1,
+  "description":"响应成功，仅更换场景，不修改剧本。",
+  "variables":{"expectedStatus":200,"expectedCode":"APPROVED"},
+  "setup":[],"cleanup":[],
+  "mocks":[{"id":"payment","port":0,"routes":[{"method":"POST","path":"/payments","status":200,"body":{"code":"APPROVED"}}]}]
+}

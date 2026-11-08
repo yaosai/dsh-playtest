@@ -1,0 +1,7 @@
+{
+  "version":1,
+  "description":"余额不足，业务拒绝不是网络失败。",
+  "variables":{"expectedStatus":402,"expectedCode":"INSUFFICIENT_FUNDS"},
+  "setup":[],"cleanup":[],
+  "mocks":[{"id":"payment","port":0,"routes":[{"method":"POST","path":"/payments","status":402,"body":{"code":"INSUFFICIENT_FUNDS"}}]}]
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Playtest 业务测试",
+    "description": "剧本与场景分离的业务测试播放器：HTTP mock、显式断言、步骤证据与原生可视化。复用已有 agent 与 DSH 权限，不另造智能代理。"
+  }
+}
