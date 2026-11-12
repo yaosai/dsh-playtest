@@ -563,6 +563,70 @@ test('a throwing Remote namespace still creates the skeleton instead of blanking
   assert.match(text, /让 agent 说一句/, 'and it fell back to telling the user the next step');
 });
 
+test('the handoff matches the argument count the Remote face actually declares', async () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+  const seen = { create: [], prompt: [] };
+  // Plain functions so `arguments.length` reports what the view really passed — the bug was
+  // calling session.create(request, signal) against a one-parameter face.
+  const session = {
+    create: async function create(request) { seen.create.push({ args: arguments.length, request }); return { ok: true, value: { sessionId: 'session-arity-1' } }; },
+    prompt: async function prompt(request, signal) { seen.prompt.push({ args: arguments.length, request }); return { ok: true, value: { accepted: true } }; }
+  };
+  const view = loadView(source, { remote: { session } });
+  const fixtures = JSON.parse(JSON.stringify(FIXTURES));
+  const request = async (sessionId, payload) => {
+    if (payload.action === 'create') {
+      fixtures.catalog.plays.push({ slug: 'arity-play', name: payload.title, description: '', mode: 'explore', steps: 0, scenarios: [] });
+      return { ok: true, slug: 'arity-play', title: payload.title, path: '.test-plays/arity-play', next: '' };
+    }
+    return fixtures[payload.action];
+  };
+  let tree = await renderWithEffects(view, request);
+  findButton(tree, '新建剧本').props.onClick();
+  tree = await renderWithEffects(view, request);
+  findInput(tree, '你要验证什么？').props.onChange({ target: { value: '下线后不应继续接单' } });
+  tree = await renderWithEffects(view, request);
+  findButton(tree, '创建').props.onClick();
+  await renderWithEffects(view, request, 14);
+
+  assert.equal(seen.create[0].args, 1, 'a one-parameter face must be called with one argument');
+  assert.equal(seen.create[0].request.cwd, REPO);
+  assert.equal(seen.prompt[0].args, 2, 'a two-parameter face keeps its signal');
+  assert.equal(seen.prompt[0].request.sessionId, 'session-arity-1');
+});
+
+test('an arity rejection is retried once with the count the gateway asked for', async () => {
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
+  const attempts = [];
+  const session = {
+    // Declares two parameters but the gateway only accepts one: exactly what a stale
+    // generated face looks like from the caller's seat.
+    create: async function create(request, signal) {
+      attempts.push(arguments.length);
+      if (arguments.length > 1) throw new Error('client api: session/create expected 1 argument(s), got 2');
+      return { ok: true, value: { sessionId: 'session-retried' } };
+    },
+    prompt: async function prompt(request) { attempts.push('prompt:' + arguments.length); return { ok: true, value: { accepted: true } }; }
+  };
+  const view = loadView(source, { remote: { session } });
+  const fixtures = JSON.parse(JSON.stringify(FIXTURES));
+  const request = async (sessionId, payload) => {
+    if (payload.action === 'create') return { ok: true, slug: 'retry-play', title: payload.title, path: '.test-plays/retry-play', next: '' };
+    return fixtures[payload.action];
+  };
+  let tree = await renderWithEffects(view, request);
+  findButton(tree, '新建剧本').props.onClick();
+  tree = await renderWithEffects(view, request);
+  findInput(tree, '你要验证什么？').props.onChange({ target: { value: '下线后不应继续接单' } });
+  tree = await renderWithEffects(view, request);
+  findButton(tree, '创建').props.onClick();
+  tree = await renderWithEffects(view, request, 16);
+
+  assert.deepEqual(attempts.slice(0, 2), [2, 1], 'it asked once, honoured the count, and stopped asking');
+  assert.equal(attempts.filter(item => item === 2 || item === 1).length, 2, 'no retry loop');
+  assert.match(collect(tree, []).join(' '), /已创建 retry-play/, 'the handoff still completed');
+});
+
 test('a failed run hands its evidence over, with rules against making it green', async () => {
   const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8');
   const created = [];

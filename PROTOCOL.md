@@ -42,6 +42,9 @@
 - `session.create({ cwd })` → `{ sessionId }`（响应可能包在 `RemoteResult` 里,两种形状都要接）
 - `session.prompt({ requestId, sessionId, mode: "queue", content: [{type:"text", text}] }, signal)` → `{ accepted: true }`
 
+**参数个数按对方面函数的声明取,不要照 Host 签名硬写。** 生成面里 `create` 只收 1 个参数、`prompt` 收 2 个;照 `(request, signal)` 统一调用会被网关拒:
+`client api: session/create expected 1 argument(s), got 2`。视图读 `face[method].length` 决定传几个,并在遇到该 arity 报错时按报错里要求的个数**纠正重试一次**（只一次,不循环）——签名差异因此不会变成坏按钮,也不会掩盖真正的失败。
+
 `requestId` 由客户端生成并持久化在正好一条被接受的用户消息上,重复提交因此幂等。骨架已经落盘:交接失败只报告,不回滚、不假装没建。宿主缺该命名空间时,视图退化为提示用户自己对 agent 说一声。
 
 ## 失败交接（运行 → agent）

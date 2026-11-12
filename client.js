@@ -308,14 +308,35 @@ window.__ModuleLoader__.load({
         return null;
       }
     }
+    const ARITY_FAILURE = /expected (\d+) argument\(s\), got (\d+)/;
+    // Generated Remote faces carry the Host signature's parameter count, but which trailing
+    // parameters (the AbortSignal) survive into the Client face is the gateway's choice —
+    // `session.create` takes one argument while `session.prompt` takes two. Calling with the
+    // declared count, plus one corrective retry driven by the gateway's own message, keeps a
+    // signature difference from becoming a broken button. It never loops.
+    async function callRemote(face, method, request, signal) {
+      const declared = typeof face[method].length === 'number' ? face[method].length : 1;
+      let withSignal = declared >= 2;
+      const invoke = () => (withSignal ? face[method](request, signal) : face[method](request));
+      try {
+        return await invoke();
+      } catch (error) {
+        const mismatch = ARITY_FAILURE.exec(String((error && error.message) || error));
+        if (!mismatch) throw error;
+        const expected = Number(mismatch[1]);
+        if (expected === (withSignal ? 2 : 1)) throw error;
+        withSignal = expected >= 2;
+        return invoke();
+      }
+    }
     function createHandoff(session) {
       if (!session || typeof session.create !== 'function' || typeof session.prompt !== 'function') return null;
       return async function handoff(goal, signal) {
-        const created = await session.create({ cwd: goal.repoRoot }, signal);
+        const created = await callRemote(session, 'create', { cwd: goal.repoRoot }, signal);
         if (created && created.ok === false) throw new Error(created.error && (created.error.message || String(created.error)) || 'session create failed');
         const target = (created && created.value) || created || {};
         if (!target.sessionId) throw new Error('session create returned no sessionId');
-        const accepted = await session.prompt({
+        const accepted = await callRemote(session, 'prompt', {
           requestId: 'playtest-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
           sessionId: target.sessionId, mode: 'queue',
           content: [{ type: 'text', text: goal.text }]
