@@ -116,7 +116,7 @@ class CommandDatabaseTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="playtest-command-db-")
         self.root = Path(self.temp.name).resolve()
-        self.directory = self.root / "test-plays" / "demo"
+        self.directory = self.root / ".test-plays" / "demo"
         self.directory.mkdir(parents=True)
         tools = self.root / "tools"
         tools.mkdir()
@@ -130,7 +130,7 @@ class CommandDatabaseTests(unittest.TestCase):
         self.config = {"databases": {"main": {"driver": "command",
                        "argv": ["python3", "tools/fake.py"], "expectedTarget": TARGET,
                        "assetFiles": ["tools/fake.py", "tools/private.conf"]}}}
-        self.write(self.root / ".playtest.json", self.config)
+        self.write(self.root / ".test-plays/config.json", self.config)
         self.assets([self.step()])
 
     def tearDown(self):
@@ -172,7 +172,8 @@ class CommandDatabaseTests(unittest.TestCase):
         self.assertEqual(len(hashes["tools/private.conf"]["sha256"]), 64)
         self.assertNotIn("UNRELATED_PRIVATE_CONTENT_MUST_NOT_APPEAR", json.dumps(inspected))
         self.assertNotIn(FAKE, json.dumps(inspected))
-        self.assertFalse((self.root / ".playtest").exists())
+        self.assertFalse((self.root / ".test-plays" / "runs").exists(),
+                         "preview and rejected runs must not create evidence")
 
     def test_unapproved_reads_and_writes_rejected_before_spawn(self):
         for sql in ("SELECT 1", "UPDATE sample SET value=1"):
@@ -180,7 +181,8 @@ class CommandDatabaseTests(unittest.TestCase):
             with patch("subprocess.Popen", side_effect=AssertionError("unapproved spawn")):
                 with self.assertRaisesRegex(EngineError, "confirmation"):
                     dispatch(self.command("run"))
-        self.assertFalse((self.root / ".playtest").exists())
+        self.assertFalse((self.root / ".test-plays" / "runs").exists(),
+                         "preview and rejected runs must not create evidence")
 
     def test_direct_runner_rejects_unapproved_query(self):
         inspected = compile_request(self.command("inspect"))
@@ -352,7 +354,7 @@ class CommandDatabaseTests(unittest.TestCase):
         for fields in cases:
             with self.subTest(fields=fields):
                 changed = {"databases": {"main": {**self.config["databases"]["main"], **fields}}}
-                self.write(self.root / ".playtest.json", changed)
+                self.write(self.root / ".test-plays/config.json", changed)
                 with self.assertRaises(EngineError):
                     dispatch(self.command("inspect"))
 
@@ -363,7 +365,7 @@ class CommandDatabaseTests(unittest.TestCase):
             link = self.root / "tools" / "escaped.json"
             link.symlink_to(outside)
             self.config["databases"]["main"]["argv"].append("--config=tools/escaped.json")
-            self.write(self.root / ".playtest.json", self.config)
+            self.write(self.root / ".test-plays/config.json", self.config)
             with self.assertRaises(EngineError):
                 dispatch(self.command("inspect"))
 
@@ -384,7 +386,7 @@ class CommandDatabaseTests(unittest.TestCase):
         self.assets([self.step("CANCEL"), self.step("SELECT should-not-run", stepNo=2)],
                     {"cleanup": [self.step("SELECT cleanup")]})
         run_id = "cancel-adapter"
-        run_dir = self.root / ".playtest" / "runs" / run_id
+        run_dir = self.root / ".test-plays" / "runs" / run_id
         process = subprocess.Popen([sys.executable, str(ENGINE / "cli.py")], stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})

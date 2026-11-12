@@ -13,24 +13,56 @@ window.__ModuleLoader__.load({
     const EVENT_LIMIT = 400;
     const en = {
       title: 'Business tests', subtitle: 'Preview the workflow and effects, then follow the actual test results.',
-      repo: 'Repository', repoHint: 'Leave blank to use this session’s working directory.',
-      load: 'Load tests', refresh: 'Refresh', demo: 'Open isolated examples', resolvedRepo: 'Current repository',
+      repo: 'Repository',
+      refresh: 'Refresh', demo: 'Open isolated examples', resolvedRepo: 'Current repository',
       search: 'Search tests', searchHint: 'Name, description or slug', catalog: 'Test catalog',
-      noTests: 'No tests found. Choose a repository containing test-plays, or open the isolated examples.',
+      noTests: 'No tests found. This repository has no .test-plays directory yet.',
+      noRepos: 'No Git repositories found in this workspace.',
       noMatches: 'No tests match this search.', selected: '{count} selected', selectAll: 'Select visible tests',
-      clearSelection: 'Clear selection', preview: 'Preview selected', validate: 'Validate selected',
-      validation: 'Validation results', target: 'Target name (optional)', scenario: 'Scenario file (optional)',
+      clearSelection: 'Clear selection', preview: 'Preview again', previewing: 'Previewing…', validate: 'Validate selected',
+      validation: 'Validation results', target: 'Target', scenario: 'Scenario',
+      scenarioAuto: "Play's default scenario", scenarioIsDefault: ' (default)', targetAuto: "Play's own target",
+      scenarioLockedHint: 'Several plays selected: only scenario files they all carry are honoured, otherwise each play uses its own default.',
       targetHint: 'Configured target or the play’s default', scenarioHint: 'Leave blank to use each play’s default',
-      readyHint: 'Select tests and preview them before starting a run.', digest: 'Reviewed snapshot',
+      readyHint: 'Select a test and its preview appears automatically.', digest: 'Reviewed snapshot',
       previewTitle: 'Execution preview', previewOnly: 'Preview does not call APIs or prepare data.',
-      workflow: 'Workflow steps', setup: 'Scenario preparation', cleanup: 'Cleanup', mocks: 'Mock dependencies',
-      effects: 'Expected effects', noEffects: 'No external effects requiring confirmation were reported.',
+      workflow: 'Workflow steps', setup: 'Data preparation', cleanup: 'Cleanup', mocks: 'Mock dependencies',
+      prepare: 'Scenario preparation',
+      newPlay: 'New play', saveAsPlay: 'Save this run as a play',
+      createTitle: 'What do you want to verify?', createExample: 'e.g. after a station goes offline it must stop accepting bills',
+      createHelp: 'The directory name and target are worked out from this repository; a new agent session writes the steps and assertions from what the code actually does.',
+      analyzeRun: 'Let an agent analyse this failure', noStepFailed: 'no step reported a failure, yet the verdict is not passed',
+      analyzing: 'Handed this failure to a new session ({sessionId}) — it is in the same workspace list.',
+      agentAnalyze: 'Use the Playtest plugin to analyse this failed run and improve the play.\n'
+        + 'Repository: {repo}\nRun: {runId} (play {play}; verdict {verdict}, execution {execution}, cleanup {cleanup})\n'
+        + 'Evidence directory: {runDir}\nSteps that did not pass: {failures}\n\n'
+        + 'Read the evidence before concluding: use the playtest tool to read this runId, and the events.jsonl / '
+        + 'result.json in the evidence directory when the summary is not enough. Never diagnose from step names.\n'
+        + 'Assign exactly one cause and say what in the evidence makes you pick it: (1) the play or its assertions are '
+        + 'wrong (path, field, data, timing), (2) the environment or fixtures do not meet a precondition, '
+        + '(3) a real business defect.\n'
+        + 'Forbidden: loosening or deleting assertions to make it pass, rewriting an expectation to the observed value, '
+        + 'downgrading a failing step to "record only". If it is a business defect, do not touch the play — report the '
+        + 'evidence and what you recommend.\n'
+        + 'After editing, run playtest_lint and inspect, then ask the user to press play again; do not start a run that '
+        + 'hits the real system yourself.',
+      agentGoal: 'Use the Playtest plugin to turn the play {repo}/{path} into a playable test.\n'
+        + 'What to verify: {intent}\n'
+        + 'Constraints: read the code and contracts first to confirm real paths, parameters and fields — do not guess. '
+        + 'Assert only what you can justify, and record the basis in claims[].basis or NOTES.md. Where the intended behaviour is not '
+        + 'confirmed, keep mode: explore and write down the gap. Finish with playtest_lint and inspect; do not start a run that '
+        + 'hits the real system yourself — that click belongs to the user.',
+      createSubmit: 'Create', cancelForm: 'Cancel', formRequired: 'Describe what to verify first.',
+      created: 'Created {slug} (target: {target}) and selected it. Ask the agent to fill in steps and assertions.',
+      saved: 'Saved as {slug}: {drafted} steps carry expectations from that run. Confirm them before calling it a baseline.',
+      tabWork: 'Tests & preview', tabRun: 'Run', phasePrepare: '1 · Scenario preparation (project-provided)',
+      phaseSetup: '2 · Data preparation', phasePlay: '3 · Step execution', phaseCleanup: '4 · Cleanup',
+      runEmpty: 'No run selected. Start a test or pick one from the run history.',
+      effects: 'Expected effects', noEffects: 'No external effects were reported.',
       basis: 'Claims and basis', noClaims: 'No claims recorded. Observations alone do not prove business acceptance.',
       inspectDetails: 'Full preview', assertions: 'Assertions', mode: 'Test purpose',
       'mode.explore': 'Explore', 'mode.baseline': 'Behavior baseline', 'mode.acceptance': 'Acceptance',
-      confirm: 'I have reviewed and confirm the effects listed in this snapshot.',
-      confirmHint: 'Confirmation is for this test only; it does not increase session permissions.',
-      start: 'Start test', stale: 'Selection or environment changed. Preview again before running.',
+      start: 'Start test', stale: 'This preview is out of date and is being refreshed.',
       activeHint: 'A test is active in this repository. Wait for it or cancel it before starting another.',
       runs: 'Run history', noRuns: 'No runs recorded for this session and repository.',
       run: 'Run', cancel: 'Cancel test', cancelling: 'Cancellation requested; cleanup may still be running.',
@@ -39,6 +71,7 @@ window.__ModuleLoader__.load({
       omitted: 'Earlier events are not shown. The run artifacts retain the complete recorded timeline.',
       evidence: 'Evidence / details', outcome: 'Recorded result', artifacts: 'Run artifacts',
       phase: 'Phase', step: 'Step', type: 'Action', expected: 'Expected', actual: 'Actual',
+      checks: 'Verifications', description: 'Scene notes', noDescription: 'This play has no written description.',
       noSteps: 'No steps in this phase.', noAssertions: 'No assertion records available yet.',
       status: 'Status', unknown: 'Unknown', empty: 'None', busy: 'Working…',
       unavailable: 'This view needs an active session.', commandMissing: 'The /playtest command is not available.',
@@ -64,28 +97,68 @@ window.__ModuleLoader__.load({
     };
     const zh = {
       title: '业务测试', subtitle: '先预览流程与影响，再观察真实的逐步测试结果。',
-      repo: '仓库', repoHint: '留空使用当前会话的工作目录。', load: '加载剧本', refresh: '刷新',
+      repo: '仓库', refresh: '刷新',
       demo: '打开隔离示例', resolvedRepo: '当前仓库', search: '搜索剧本', searchHint: '名称、描述或目录名',
-      catalog: '剧本目录', noTests: '未发现剧本。请选择包含 test-plays 的仓库，或打开隔离示例。',
+      catalog: '剧本目录', noTests: '该仓库下还没有 .test-plays 目录。',
+      noRepos: '当前工作区未发现 Git 仓库。',
       noMatches: '没有匹配的剧本。', selected: '已选 {count} 个', selectAll: '选中当前搜索结果',
-      clearSelection: '清空选择', preview: '预览所选', validate: '校验所选', validation: '结构校验结果',
-      target: '目标名称（可选）', scenario: '场景文件（可选）', targetHint: '使用配置中的目标或剧本默认值',
-      scenarioHint: '留空使用各剧本的默认场景', readyHint: '选择剧本并预览后，才能开始播放。',
+      clearSelection: '清空选择', preview: '重新预览', previewing: '正在预览…', validate: '校验所选', validation: '结构校验结果',
+      target: '目标', scenario: '场景', scenarioAuto: '用剧本自己的默认场景', scenarioIsDefault: '（默认）',
+      targetAuto: '用剧本自己的目标',
+      scenarioLockedHint: '选了多个剧本：只有它们都有的场景文件才有效，否则各剧本用自己的默认场景。', targetHint: '使用配置中的目标或剧本默认值',
+      scenarioHint: '留空使用各剧本的默认场景', readyHint: '选择剧本后会自动预览。',
       digest: '已审阅快照', previewTitle: '执行预览', previewOnly: '预览不会调用接口或执行造数。',
-      workflow: '流程步骤', setup: '场景准备', cleanup: '清理步骤', mocks: 'Mock 依赖',
-      effects: '预期影响', noEffects: '未报告需要确认的外部影响。', basis: '验证主张与依据',
+      workflow: '流程步骤', setup: '数据准备', cleanup: '清理步骤', mocks: 'Mock 依赖',
+      prepare: '场景准备',
+      newPlay: '新建剧本', saveAsPlay: '把这次运行存为剧本',
+      createTitle: '你要验证什么？', createExample: '例：工作站下线后不应继续接单',
+      createHelp: '目录名和目标由本仓库推出来；创建后会自动另起一个 agent 会话，由它读代码写步骤与断言——不会替你猜业务规则。',
+      analyzeRun: '让 agent 分析这次失败', noStepFailed: '步骤里没有失败项，但整体结论不是通过',
+      analyzing: '已把这次失败交给新会话分析（会话 {sessionId}），在同一工作区列表里可以看到。',
+      agentAnalyze: '用 Playtest 分析这次失败的播放，并把剧本改对。\n'
+        + '仓库：{repo}\n运行：{runId}（剧本 {play}；结论 {verdict}／执行 {execution}／清理 {cleanup}）\n'
+        + '证据目录：{runDir}\n未通过的步骤：{failures}\n\n'
+        + '先读证据再下结论：用 playtest 工具 read 这个 runId；摘要不够就读证据目录里的 events.jsonl 与 result.json。'
+        + '不要凭步骤名猜原因。\n'
+        + '只归到一类，并说明证据里是什么让你这么判：①剧本或断言写错了（路径、字段、数据、时机）②环境或夹具不满足前置条件'
+        + '③真实业务缺陷。\n'
+        + '禁止：为了变绿而放宽或删除断言、把预期改成实际值、把失败步骤降级成“只记录”。若是业务缺陷，不要动剧本，'
+        + '报告证据与建议即可。\n'
+        + '改完跑 playtest_lint 与 inspect 自查，然后请用户重新点播放——不要自己发起会打到真实系统的播放。',
+      agentGoal: '用 Playtest 插件把 {repo}/{path} 补成可播放的测试。\n'
+        + '要验证：{intent}\n'
+        + '约束：先读代码与接口契约确认真实路径、参数和字段，不要猜；只写你能证明的断言，依据写进 claims[].basis 或 NOTES.md；'
+        + '业务口径未确认时保持 mode: explore 并记下缺口；写完用 playtest_lint 与 inspect 自查；'
+        + '不要自行发起会打到真实系统的播放，那一下归用户点。',
+      handedOff: '已创建 {slug}，并另起会话把目标交给了 agent；新会话在同一工作区列表里。',
+      handedOffFailed: '{slug} 的骨架已建好，但没能自动交给 agent（骨架没有丢）：',
+      handoffUnavailable: '让 agent 说一句「把这个剧本补成可播放的测试」即可继续。',
+      createSubmit: '创建', cancelForm: '取消', formRequired: '先说一句要验证什么。',
+      created: '已创建 {slug}（目标：{target}）并选中。让 agent 把步骤和断言补上。',
+      saved: '已沉淀为 {slug}：{drafted} 步的预期取自那次运行的实际值，确认后才能当基线。',
+      tabWork: '剧本与预览', tabRun: '运行', phasePrepare: '① 场景准备（由项目提供）',
+      phaseSetup: '② 数据准备', phasePlay: '③ 步骤执行', phaseCleanup: '④ 收尾清理',
+      runEmpty: '尚未选择运行。开始一次播放，或在运行历史里选一条。',
+      effects: '预期影响', noEffects: '未报告外部影响。', basis: '验证主张与依据',
       noClaims: '未记录验证主张。仅观察到行为，不代表已通过业务验收。', inspectDetails: '完整预览',
       assertions: '断言', mode: '测试目的', 'mode.explore': '探索', 'mode.baseline': '行为基线',
-      'mode.acceptance': '验收', confirm: '我已审阅并确认当前快照列出的影响。',
-      confirmHint: '确认只用于本次测试，不会扩大当前会话权限。', start: '开始播放',
-      stale: '选择或环境已变化，请重新预览再播放。',
+      'mode.acceptance': '验收',
+      start: '开始播放',
+      stale: '预览已过期，正在自动刷新。',
       activeHint: '当前仓库有测试正在运行，请等待完成或取消后再开始另一轮。',
       runs: '运行历史', noRuns: '当前会话与仓库尚无运行记录。', run: '运行', cancel: '取消测试',
       cancelling: '已请求取消，清理可能仍在进行。', reloadRun: '刷新运行', verdict: '断言结论',
       execution: '执行情况', cleanupResult: '清理情况', timeline: '时间线与证据', noEvents: '尚未收到测试事件。',
       omitted: '部分较早事件未显示；运行资产保留完整的已记录时间线。', evidence: '证据／详情',
       outcome: '记录结果', artifacts: '运行资产', phase: '阶段', step: '步骤', type: '动作',
-      expected: '预期', actual: '实际', noSteps: '此阶段没有步骤。', noAssertions: '暂无断言记录。',
+      expected: '预期', actual: '实际', checks: '校验项', description: '场景说明',
+      noDescription: '该剧本没有写说明。',
+      'type.http': 'HTTP 调用', 'type.dbQuery': '数据库查询', 'type.dbWait': '等待数据库条件',
+      'type.wait': '固定等待', 'type.mockVerify': '校验 Mock 交互',
+      'phase.prepare': '场景准备', 'phase.setup': '数据准备', 'phase.play': '步骤执行', 'phase.cleanup': '收尾清理',
+      'effect.http.external': '调用非本插件启动的服务', 'effect.database.command': '执行项目侧数据库适配器（含只读）',
+      'effect.database.write': '写入 SQLite 或影响未知的 SQL',
+      noSteps: '此阶段没有步骤。', noAssertions: '暂无断言记录。',
       status: '状态', unknown: '未知', empty: '无', busy: '处理中…', unavailable: '此视图需要一个有效会话。',
       commandMissing: '/playtest 命令尚未注册。', remoteUnavailable: '命令桥接不可用，请重新连接 Harness 页面后重试。',
       invalidResponse: 'Playtest 命令返回了无效响应。', error: '操作失败', dismiss: '关闭提示', skipped: '已跳过',
@@ -107,8 +180,22 @@ window.__ModuleLoader__.load({
 .pt-view{box-sizing:border-box;min-width:0;width:100%;padding:20px 24px 32px;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:1.5}
 .pt-view *{box-sizing:border-box}.pt-view h2,.pt-view h3{margin:0;font-weight:600}.pt-view h2{font-size:19px}.pt-view h3{font-size:14px}
 .pt-muted{color:var(--dsw-alias-label-secondary);font-size:12px}.pt-header{margin-bottom:16px}.pt-header p{margin:4px 0 0}
-.pt-toolbar,.pt-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pt-toolbar{margin:12px 0}.pt-field{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}.pt-field>span{font-size:12px;color:var(--dsw-alias-label-secondary)}
-.pt-input,.pt-button{font:inherit;color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;min-height:36px;background:transparent;padding:7px 10px}.pt-input{min-width:0;width:100%}.pt-button{cursor:pointer;white-space:nowrap}
+.pt-toolbar,.pt-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pt-actionbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0;padding:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-2);position:sticky;top:0;z-index:1}.pt-tabs{display:flex;gap:6px;margin:0 0 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.pt-tab{font:inherit;color:var(--dsw-alias-label-secondary);background:transparent;border:0;border-bottom:2px solid transparent;padding:8px 10px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.pt-tab[aria-selected=true]{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary)}
+.pt-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-brand-primary)}
+.pt-view[data-tab=run] .pt-only-work,.pt-view:not([data-tab=run]) .pt-only-run{display:none}
+.pt-phase{margin-bottom:14px}
+.pt-form{border-color:var(--dsw-alias-brand-primary)}
+.pt-effects{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.pt-effects li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:12px}
+.pt-tip{position:fixed;z-index:5;max-height:min(60vh,420px);overflow:auto;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);pointer-events:none}
+.pt-desc{margin:6px 0}
+.pt-desc>p{margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere}
+.pt-tip strong{display:block;font-size:13px;margin-bottom:2px}
+.pt-tip p{margin:6px 0 0;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;overflow-wrap:anywhere}.pt-toolbar{margin:12px 0}.pt-field{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}.pt-field>span{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.pt-input,.pt-button{font:inherit;color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;min-height:36px;background:transparent;padding:7px 10px}.pt-input{min-width:0;width:100%}select.pt-input{background:var(--dsw-alias-bg-layer-1);cursor:pointer}.pt-button{cursor:pointer;white-space:nowrap}
 .pt-button:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2)}.pt-button:disabled{opacity:.45;cursor:default}.pt-button.pt-primary{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);font-weight:600}
 .pt-view :is(button,input,select,summary):focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.pt-button.pt-small{min-height:30px;padding:3px 8px;font-size:12px}
 .pt-grid{display:grid;grid-template-columns:minmax(200px,270px) minmax(0,1fr);gap:16px;align-items:start}.pt-column{min-width:0}.pt-card{border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:14px;min-width:0;margin-bottom:12px}
@@ -116,10 +203,12 @@ window.__ModuleLoader__.load({
 .pt-choice input{margin:5px 0 0;accent-color:var(--dsw-alias-brand-primary)}.pt-choice-body{flex:1;min-width:0}.pt-choice-name{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;text-align:left;padding:0;width:100%;font-weight:500;overflow-wrap:anywhere}.pt-choice-name:hover{text-decoration:underline}.pt-choice p{margin:3px 0;font-size:12px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
 .pt-badge{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:1px 6px;font-size:11px;overflow-wrap:anywhere}.pt-badge[data-tone=good]{color:var(--dsw-alias-state-success-primary)}.pt-badge[data-tone=bad]{color:var(--dsw-alias-state-error-primary);font-weight:600}
 .pt-empty{margin:10px 0;color:var(--dsw-alias-label-secondary);font-size:13px}.pt-notice{border:1px solid var(--dsw-alias-border-l2);border-left:3px solid var(--dsw-alias-brand-primary);border-radius:8px;padding:10px 12px;margin:10px 0;overflow-wrap:anywhere}.pt-notice p{margin:0}.pt-notice strong{margin-right:6px}
-.pt-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.pt-preview-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.pt-table-wrap{overflow:auto;margin:8px 0}.pt-table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}.pt-table th{color:var(--dsw-alias-label-secondary);font-weight:500}.pt-table td,.pt-table th{padding:7px 6px;border-bottom:1px solid var(--dsw-alias-border-l2);vertical-align:top;overflow-wrap:anywhere}.pt-table td:first-child{white-space:nowrap;width:48px}
+.pt-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.pt-preview-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.pt-checks{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12px}.pt-checks li{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}.pt-checks li[data-tone=bad] .pt-badge{color:var(--dsw-alias-state-error-primary)}
+.pt-table-wrap{overflow:auto;margin:8px 0}.pt-table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}.pt-table th{color:var(--dsw-alias-label-secondary);font-weight:500}.pt-table td,.pt-table th{padding:7px 6px;border-bottom:1px solid var(--dsw-alias-border-l2);vertical-align:top;overflow-wrap:anywhere}.pt-table td:first-child{white-space:nowrap;width:48px}
 .pt-code{margin:8px 0;padding:10px;background:var(--dsw-alias-bg-layer-2);border-radius:8px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}.pt-view details{margin:8px 0}.pt-view summary{cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:12px}
-.pt-confirm{display:flex;align-items:flex-start;gap:8px;margin:12px 0;font-size:13px}.pt-confirm input{margin-top:4px;accent-color:var(--dsw-alias-brand-primary)}.pt-confirm small{display:block;margin-top:4px;color:var(--dsw-alias-label-secondary)}
-.pt-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}.pt-status-grid dt{font-size:12px;color:var(--dsw-alias-label-secondary);margin-bottom:5px}.pt-status-grid dd{margin:0;overflow-wrap:anywhere}.pt-run-list{max-height:240px;overflow:auto}.pt-run-button{display:block;width:100%;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;color:inherit;font:inherit;padding:8px;cursor:pointer}.pt-run-button:hover,.pt-run-button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-2)}.pt-run-button[aria-pressed=true]{border-color:var(--dsw-alias-brand-primary)}.pt-run-button>span{display:block;font-size:12px;overflow-wrap:anywhere}
+
+.pt-status-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 0}.pt-status-grid dt{font-size:12px;color:var(--dsw-alias-label-secondary);margin-bottom:5px}.pt-status-grid dd{margin:0;overflow-wrap:anywhere}
+.pt-run-list{max-height:240px;overflow:auto}.pt-run-button{display:block;width:100%;border:1px solid transparent;border-radius:8px;background:transparent;text-align:left;color:inherit;font:inherit;padding:8px;cursor:pointer}.pt-run-button:hover,.pt-run-button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-2)}.pt-run-button[aria-pressed=true]{border-color:var(--dsw-alias-brand-primary)}.pt-run-button>span{display:block;font-size:12px;overflow-wrap:anywhere}
 .pt-timeline{list-style:none;margin:10px 0;padding:0}.pt-timeline>li{border-left:2px solid var(--dsw-alias-border-l2);padding:0 0 12px 12px;margin-left:4px;min-width:0}.pt-event-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px}.pt-event-head time{color:var(--dsw-alias-label-secondary)}.pt-event-name{font-size:13px;margin:3px 0;overflow-wrap:anywhere}.pt-claim{border-left:2px solid var(--dsw-alias-border-l2);padding-left:10px;margin:10px 0}.pt-claim p{margin:4px 0;overflow-wrap:anywhere}.pt-artifacts{font-size:12px;overflow-wrap:anywhere}
 @media(max-width:820px){.pt-view{padding:16px}.pt-grid{grid-template-columns:1fr}.pt-list{max-height:260px}.pt-options{grid-template-columns:1fr}.pt-status-grid{grid-template-columns:1fr}.pt-toolbar>.pt-field{flex-basis:100%}}
 @media(pointer:coarse){.pt-input{font-size:16px}.pt-button{min-height:40px}}
@@ -151,6 +240,14 @@ window.__ModuleLoader__.load({
       const tone = toneOf(value);
       return tone === 'good' ? '✓' : tone === 'bad' ? '!' : ACTIVE.has(stateOf(value)) ? '◉' : '○';
     }
+    // A missing dictionary entry must not leak "playtest-ui.type.foo" into the view.
+    // `t` is passed in, not captured: these helpers live at module scope where the
+    // bound translator does not exist yet, and a bare reference white-screens the view.
+    function named(t, prefix, value, fallback) {
+      const text = value == null ? '' : String(value);
+      const translated = t(prefix + text);
+      return translated === prefix + text ? (fallback != null ? fallback : text) : translated;
+    }
     function Badge({ value, t }) {
       return h('span', { className: 'pt-badge', 'data-tone': toneOf(value) },
         h('span', { 'aria-hidden': true }, glyph(value)), translatedState(value, t));
@@ -160,20 +257,36 @@ window.__ModuleLoader__.load({
       return h('details', { open: open || undefined }, h('summary', null, title),
         h('pre', { className: 'pt-code' }, bounded(value)));
     }
+    function checksOf(step) {
+      return step && Array.isArray(step.checks) ? step.checks : [];
+    }
     function StepTable({ steps, t, results }) {
       if (!Array.isArray(steps) || !steps.length) return h('p', { className: 'pt-empty' }, t('noSteps'));
       return h('div', { className: 'pt-table-wrap' }, h('table', { className: 'pt-table' },
         h('thead', null, h('tr', null, h('th', { scope: 'col' }, t('step')),
           h('th', { scope: 'col' }, t('workflow')), h('th', { scope: 'col' }, t('type')),
-          h('th', { scope: 'col' }, t(results ? 'status' : 'assertions')))),
+          results ? h('th', { scope: 'col' }, t('status')) : null)),
         h('tbody', null, steps.map((step, index) => h('tr', { key: [step.phase, step.play, step.stepNo, index].join(':') },
           h('td', null, step.stepNo == null ? index + 1 : step.stepNo),
           h('td', null, step.name || step.description || t('unknown'),
-            step.phase ? h('div', { className: 'pt-muted' }, asText(step.phase)) : null,
+            step.phase ? h('div', { className: 'pt-muted' }, named(t, 'phase.', step.phase, asText(step.phase))) : null,
+            checksOf(step).length ? h('ul', { className: 'pt-checks', 'aria-label': t('checks') },
+              checksOf(step).map((check, position) => h('li', { key: position, 'data-tone': results ? toneOf(check.status) : 'neutral' },
+                results ? h(Badge, { value: check.status || 'observed', t }) : h('span', { className: 'pt-muted', 'aria-hidden': true }, '·'),
+                h('span', null, check.name || check.type || t('checks')),
+                check.error ? h('div', { className: 'pt-muted' }, check.error) : null))) : null,
             results ? h(JsonDetails, { title: t('evidence'), value: step }) : null),
-          h('td', null, step.type || 'http'),
-          h('td', null, results ? h(Badge, { value: step.status || step.verdict || (step.ok === true ? 'passed' : step.ok === false ? 'failed' : 'observed'), t })
-            : Array.isArray(step.assertions) ? step.assertions.length : step.assertions || 0))))));
+          h('td', null, named(t, 'type.', step.type || 'http')),
+          results ? h('td', null, h(Badge, { value: step.status || step.verdict || (step.ok === true ? 'passed' : step.ok === false ? 'failed' : 'observed'), t })) : null)))));
+    }
+    const RUN_PHASES = [['prepare', 'phasePrepare'], ['setup', 'phaseSetup'], ['play', 'phasePlay'], ['cleanup', 'phaseCleanup']];
+    function RunSteps({ steps, t }) {
+      const list = Array.isArray(steps) ? steps : [];
+      const groups = RUN_PHASES.map(([phase, label]) => [phase, label, list.filter(step => (step.phase || 'play') === phase)])
+        .filter(entry => entry[2].length);
+      if (!groups.length) return h('p', { className: 'pt-empty' }, t('noSteps'));
+      return h(React.Fragment, null, groups.map(([phase, label, items]) => h('section', { key: phase, className: 'pt-phase' },
+        h('h3', null, t(label)), h(StepTable, { steps: items, results: true, t }))));
     }
     function mergeEvents(old, incoming) {
       const map = new Map(old.map((event, index) => [event.seq == null ? 'old:' + index : event.seq, event]));
@@ -183,6 +296,35 @@ window.__ModuleLoader__.load({
 
     // Captures the root Remote face. A session-scoped Remote face intentionally
     // omits the explicit session argument; mixing those two faces causes arity errors.
+    // One sentence in, a fresh agent session out: this is the same Remote pair the GUI's
+    // New Session uses (`session.create` by directory, then `session.prompt`). A build
+    // without that namespace degrades to a notice, never to a dead button.
+    // Reading an undeclared or unmounted Remote namespace throws, and a throw during the
+    // view's own setup blanks the whole panel. Never let the probe escape.
+    function remoteNamespace(remote, name) {
+      try {
+        return remote ? remote[name] : null;
+      } catch (_) {
+        return null;
+      }
+    }
+    function createHandoff(session) {
+      if (!session || typeof session.create !== 'function' || typeof session.prompt !== 'function') return null;
+      return async function handoff(goal, signal) {
+        const created = await session.create({ cwd: goal.repoRoot }, signal);
+        if (created && created.ok === false) throw new Error(created.error && (created.error.message || String(created.error)) || 'session create failed');
+        const target = (created && created.value) || created || {};
+        if (!target.sessionId) throw new Error('session create returned no sessionId');
+        const accepted = await session.prompt({
+          requestId: 'playtest-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+          sessionId: target.sessionId, mode: 'queue',
+          content: [{ type: 'text', text: goal.text }]
+        }, signal);
+        if (accepted && accepted.ok === false) throw new Error(accepted.error && (accepted.error.message || String(accepted.error)) || 'prompt failed');
+        return target.sessionId;
+      };
+    }
+
     function createRequest(remote, t) {
       return async function request(sessionId, payload, signal) {
         if (!sessionId) throw new Error(t('unavailable'));
@@ -207,7 +349,8 @@ window.__ModuleLoader__.load({
       };
     }
 
-    function Workbench({ sessionId, request, t }) {
+    function Workbench({ sessionId, request, handoff, t }) {
+      const [repos, setRepos] = React.useState([]);
       const [repo, setRepo] = React.useState('');
       const [catalog, setCatalog] = React.useState(null);
       const [search, setSearch] = React.useState('');
@@ -215,13 +358,16 @@ window.__ModuleLoader__.load({
       const [scenario, setScenario] = React.useState('');
       const [target, setTarget] = React.useState('');
       const [preview, setPreview] = React.useState(null);
-      const [confirmed, setConfirmed] = React.useState(false);
       const [validation, setValidation] = React.useState(null);
       const [runs, setRuns] = React.useState([]);
       const [runId, setRunId] = React.useState('');
       const [runData, setRunData] = React.useState(null);
       const [busy, setBusy] = React.useState('');
+      const [previewBusy, setPreviewBusy] = React.useState(false);
       const [message, setMessage] = React.useState(null);
+      const [tab, setTab] = React.useState('work');
+      const [tip, setTip] = React.useState(null);
+      const [form, setForm] = React.useState(null);
       const mounted = React.useRef(true);
       const pending = React.useRef(new Set());
       const epoch = React.useRef(0);
@@ -232,13 +378,37 @@ window.__ModuleLoader__.load({
       repoRef.current = repo;
       const selectionKey = JSON.stringify([repo.trim(), selected, scenario.trim(), target.trim()]);
       const plays = catalog && Array.isArray(catalog.plays) ? catalog.plays : [];
+      const repoOptions = React.useMemo(() => {
+        const list = (Array.isArray(repos) ? repos : []).map(item => ({
+          path: item.path,
+          label: item.relative === '.' ? item.name : item.relative
+        }));
+        if (catalog && catalog.demoRepo && !list.some(item => item.path === catalog.demoRepo)) {
+          list.push({ path: catalog.demoRepo, label: t('demo') });
+        }
+        return list;
+      }, [repos, catalog, t]);
+      // Long scene notes must not stretch the catalog column: they open on hover,
+      // pinned to the row and clamped inside the viewport.
+      const showTip = event => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const width = Math.min(380, Math.max(220, Math.round(window.innerWidth * 0.3)));
+        const left = Math.max(12, Math.min(rect.right + 10, window.innerWidth - width - 12));
+        const top = Math.max(12, Math.min(rect.top - 6, window.innerHeight - 180));
+        setTip({ play: event.currentTarget.dataset.play, name: event.currentTarget.dataset.name,
+                 text: event.currentTarget.dataset.text, left, top, width });
+      };
+      const hideTip = () => setTip(null);
+      React.useEffect(() => { const dismiss = () => setTip(null);
+        window.addEventListener('blur', dismiss);
+        return () => window.removeEventListener('blur', dismiss); }, []);
+
       const filtered = plays.filter(play => [play.slug, play.name, play.description].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
       const activeRuns = runs.filter(run => ACTIVE.has(stateOf(run.status)));
       const activeSelected = runData && ACTIVE.has(stateOf(runData.status));
       const validPreview = preview && preview.key === selectionKey && preview.data.ok && typeof preview.data.digest === 'string';
-      const needsConfirmation = validPreview && preview.data.requiresConfirmation === true;
       const hasIssues = validPreview && (preview.data.issues || []).some(issue => ['error', 'ERROR'].includes(issue.level || issue.severity));
-      const canStart = validPreview && !hasIssues && (!needsConfirmation || confirmed) && !busy && !activeRuns.length;
+      const canStart = validPreview && !hasIssues && !busy && !previewBusy && !activeRuns.length;
 
       const call = React.useCallback(async (action, payload, externalController) => {
         const controller = externalController || new AbortController();
@@ -287,7 +457,7 @@ window.__ModuleLoader__.load({
       const currentRun = React.useRef('');
       const loadCatalog = async (overrideRepo) => {
         const version = ++epoch.current;
-        setPreview(null); setConfirmed(false); setValidation(null);
+        setPreview(null); setValidation(null);
         const opts = options(overrideRepo);
         const data = await call('catalog', opts);
         if (!mounted.current || version !== epoch.current) return;
@@ -295,41 +465,147 @@ window.__ModuleLoader__.load({
         setSelected(old => old.filter(slug => (data.plays || []).some(play => play.slug === slug)));
         await refreshRuns(opts);
       };
-      const inspect = async (chosen) => {
-        const list = chosen || selected;
+      const inspect = async (chosen, { auto = false } = {}) => {
+        const list = Array.isArray(chosen) ? chosen : selected;
         if (!list.length) return;
         const version = ++epoch.current;
         const key = JSON.stringify([repo.trim(), list, scenario.trim(), target.trim()]);
-        setPreview(null); setConfirmed(false); setValidation(null);
-        const data = await call('inspect', { ...options(), plays: list });
-        if (mounted.current && version === epoch.current) setPreview({ key, data });
+        setPreview(null); setValidation(null);
+        if (auto) setPreviewBusy(true);
+        try {
+          const data = await call('inspect', { ...options(), plays: list });
+          if (mounted.current && version === epoch.current) setPreview({ key, data });
+        } catch (error) {
+          if (mounted.current && version === epoch.current) setMessage({ error: true, text: error.message || String(error) });
+        } finally {
+          if (auto && mounted.current) setPreviewBusy(false);
+        }
       };
+      const selectRepo = value => {
+        setRepo(value); invalidate(); setCatalog(null); setSelected([]); setRuns([]); setValidation(null);
+        currentRun.current = ''; setRunId(''); setRunData(null);
+        perform('catalog', () => loadCatalog(value));
+      };
+      const loadRepos = async () => {
+        const data = await call('repos', {});
+        if (!mounted.current) return;
+        const list = Array.isArray(data.repositories) ? data.repositories : [];
+        setRepos(list);
+        const preferred = list.find(item => item.plays > 0) || list[0];
+        if (preferred) {
+          setRepo(preferred.path);
+          await loadCatalog(preferred.path);
+        } else {
+          setRepo('');
+          await loadCatalog();
+        }
+      };
+      // Creating assets is a file write: the Host blocks it when the session is read-only
+      // or the repository escapes the workspace, and that error surfaces as a notice.
+      const draftPlay = () => perform('draft', async () => {
+        // Nothing to type: the played slug and title already describe this run.
+        const data = await call('draft', { ...options(), runId });
+        if (!mounted.current || data.ok !== true) return;
+        setTab('work');
+        await loadCatalog();
+        setSelected([data.slug]);
+        setMessage({ error: false, text: t('saved', { slug: data.slug, drafted: data.draftedSteps }) });
+      });
+      const failedSteps = (steps) => (steps || []).filter(step => step.status
+        && ['passed', 'observed', 'skipped'].indexOf(step.status) < 0);
+      const analyzeRun = () => perform('analyze', async () => {
+        // The point of handing a failure over is diagnosis, not making the badge green.
+        const detail = runData || {};
+        const broken = failedSteps(detail.steps);
+        const text = t('agentAnalyze', {
+          repo: options().repoRoot, runId, play: detail.name || detail.scenarioName || '',
+          verdict: detail.verdict || 'unknown', execution: detail.execution || 'unknown',
+          cleanup: detail.cleanup || 'unknown',
+          runDir: (detail.artifacts && detail.artifacts.runDir) || '',
+          failures: broken.length
+            ? broken.map(step => '[' + (step.phase || '') + '] #' + step.stepNo + ' ' + step.name
+              + ' → ' + step.status + (step.error ? '：' + step.error : '')).join(';')
+            : t('noStepFailed')
+        });
+        const sessionId = await handoff({ repoRoot: options().repoRoot, text });
+        if (mounted.current) setMessage({ error: false, text: t('analyzing', { sessionId }) });
+      });
+      const createForm = () => setForm({ mode: 'create', title: '' });
+      const patchForm = updates => setForm(old => (old ? { ...old, ...updates } : old));
+      const submitForm = () => perform('create', async () => {
+        const title = form.title.trim();
+        if (!title) { setMessage({ error: true, text: t('formRequired') }); return; }
+        const data = await call('create', { ...options(), title });
+        if (!mounted.current || data.ok !== true) return;
+        setForm(null);
+        setTab('work');
+        await loadCatalog();
+        setSelected([data.slug]);
+        if (!handoff) {
+          // Same capability gap the tool surface has: say the word and the agent continues.
+          setMessage({ error: false, text: t('created', { slug: data.slug, target: data.target || t('empty') }) + ' ' + t('handoffUnavailable') });
+          return;
+        }
+        try {
+          await handoff({ repoRoot: options().repoRoot, text: t('agentGoal', { repo: options().repoRoot, path: data.path, intent: title }) });
+          setMessage({ error: false, text: t('handedOff', { slug: data.slug }) });
+        } catch (error) {
+          // The skeleton is already on disk: report the half-step instead of losing it.
+          setMessage({ error: true, text: t('handedOffFailed', { slug: data.slug }) + ' ' + (error.message || String(error)) });
+        }
+      });
+
       const chooseRun = async id => {
+        setTab('run');
         currentRun.current = id; cursor.current = 0;
         setRunId(id); setRunData(null);
         await readRun(id, 0, options(), undefined, true);
       };
+      // A scenario file belongs to one play: for a single play offer everything it holds;
+      // for several plays only the names every one of them carries can be honoured.
+      const picked = ((catalog && catalog.plays) || []).filter(play => selected.indexOf(play.slug) >= 0);
+      const scenarioLists = picked.map(play => play.scenarios || []);
+      const scenarioNames = !scenarioLists.length ? []
+        : scenarioLists.length === 1 ? scenarioLists[0]
+          : scenarioLists[0].filter(name => scenarioLists.every(list => list.indexOf(name) >= 0));
+      const scenarioLocked = picked.length > 1 && !scenarioNames.length;
+      const defaultFiles = picked.map(play => play.defaultScenario || 'scenario.json');
+      const scenarioLabel = name => {
+        const stem = name.replace(/^scenario[._-]?/, '').replace(/\.json$/, '');
+        const single = picked.length === 1 && defaultFiles.indexOf(name) >= 0;
+        return (stem || name) + (single ? t('scenarioIsDefault') : '');
+      };
+      const targets = (catalog && Array.isArray(catalog.targets)) ? catalog.targets : [];
       const start = async () => {
         if (!canStart) return;
         // Authority is sourced only from this checkbox's human onChange handler
         // and this button's human click, never from a catalog result or an agent tool.
         const digest = preview.data.digest;
         const data = await call('start', {
-          ...options(), plays: selected, expectedDigest: digest,
-          userConfirmedEffects: needsConfirmation === true && confirmed === true
+          ...options(), plays: selected, expectedDigest: digest
         });
-        setConfirmed(false);
         if (!mounted.current) return;
         setRuns(old => [{ runId: data.runId, status: data.status || 'running', artifacts: data.artifacts }, ...old.filter(run => run.runId !== data.runId)]);
         await chooseRun(data.runId);
       };
+      React.useEffect(() => {
+        if (scenario && scenarioNames.indexOf(scenario) < 0) setScenario('');
+      }, [scenarioNames.join(','), picked.length]);
       const invalidate = () => {
-        epoch.current += 1; setPreview(null); setConfirmed(false); setValidation(null);
+        epoch.current += 1; setPreview(null); setValidation(null);
       };
+
+      // Choosing a test (or changing repository/scenario/target) previews it
+      // automatically, so starting a run never needs a separate preview click.
+      React.useEffect(() => {
+        if (!selected.length) return undefined;
+        const timer = setTimeout(() => { inspect(selected, { auto: true }); }, 260);
+        return () => clearTimeout(timer);
+      }, [selectionKey]);
 
       React.useEffect(() => {
         mounted.current = true;
-        perform('catalog', () => loadCatalog());
+        perform('repos', loadRepos);
         return () => {
           mounted.current = false; epoch.current += 1;
           for (const controller of pending.current) controller.abort();
@@ -380,45 +656,68 @@ window.__ModuleLoader__.load({
         type: 'button', className: 'pt-button ' + (className || ''), onClick: action, disabled
       }, label);
 
-      return h('section', { className: 'pt-view', 'aria-label': t('title'), 'aria-busy': !!busy },
+      return h('section', { className: 'pt-view', 'data-tab': tab, 'aria-label': t('title'), 'aria-busy': !!busy },
         h('style', null, css),
         h('header', { className: 'pt-header' }, h('h2', null, t('title')), h('p', { className: 'pt-muted' }, t('subtitle'))),
-        h('form', { className: 'pt-toolbar', onSubmit: event => { event.preventDefault(); perform('catalog', () => loadCatalog()); } },
+        h('div', { className: 'pt-toolbar' },
           h('label', { className: 'pt-field' }, h('span', null, t('repo')),
-            h('input', { className: 'pt-input', value: repo, disabled: !!busy, placeholder: t('repoHint'), onChange: event => {
-              setRepo(event.target.value); invalidate(); setCatalog(null); setSelected([]); setRuns([]);
-              currentRun.current = ''; setRunId(''); setRunData(null);
-            } })),
-          h('button', { className: 'pt-button', type: 'submit', disabled: !!busy }, t('load')),
-          catalog && catalog.demoRepo ? button(t('demo'), () => {
-            const next = catalog.demoRepo; setRepo(next); setSelected([]); setRunId(''); setRunData(null); currentRun.current = '';
-            perform('catalog', () => loadCatalog(next));
-          }, !!busy) : null),
+            h('select', {
+              className: 'pt-input pt-select', value: repo, disabled: !!busy || !repoOptions.length,
+              'aria-label': t('repo'), onChange: event => { if (event.target.value !== repo) selectRepo(event.target.value); }
+            },
+              !repoOptions.length ? h('option', { value: '' }, t('noRepos')) : null,
+              repoOptions.map(item => h('option', { key: item.path, value: item.path }, item.label)))),
+          button(t('refresh'), () => perform('repos', loadRepos), !!busy, 'pt-small'),
+          tab === 'work' ? button(t('newPlay'), createForm, !repo || !!busy, 'pt-small') : null),
+        form ? h('section', { className: 'pt-card pt-form' },
+          h('div', { className: 'pt-card-title' }, h('h3', null, t('newPlay')), h('span', { className: 'pt-muted' }, repo)),
+          h('label', { className: 'pt-field' }, h('span', null, t('createTitle')),
+            h('input', { className: 'pt-input', value: form.title, disabled: !!busy, autoFocus: true,
+              'aria-label': t('createTitle'), placeholder: t('createExample'),
+              onChange: event => patchForm({ title: event.target.value }),
+              onKeyDown: event => { if (event.key === 'Enter' && !busy) submitForm(); } })),
+          h('p', { className: 'pt-muted' }, t('createHelp')),
+          h('div', { className: 'pt-actions' },
+            button(t('createSubmit'), submitForm, !!busy || !form.title.trim(), 'pt-primary'),
+            button(t('cancelForm'), () => setForm(null), !!busy, 'pt-small'))) : null,
         catalog && catalog.repoRoot ? h('p', { className: 'pt-muted' }, t('resolvedRepo') + ': ', catalog.repoRoot) : null,
         message ? h('div', { className: 'pt-notice', role: message.error ? 'alert' : 'status' },
           h('div', { className: 'pt-card-title' }, h('p', null, message.text),
             button(t('dismiss'), () => setMessage(null), false, 'pt-small'))) : null,
+        h('div', { className: 'pt-tabs', role: 'tablist' },
+          [['work', 'tabWork'], ['run', 'tabRun']].map(pair => h('button', {
+            key: pair[0], type: 'button', role: 'tab', className: 'pt-tab', 'aria-selected': tab === pair[0],
+            onClick: () => setTab(pair[0])
+          }, t(pair[1]), pair[0] === 'run' && activeRuns.length ? h('span', { className: 'pt-dot', 'aria-hidden': true }) : null))),
+        tab === 'work' && tip ? h('aside', { className: 'pt-tip', role: 'tooltip',
+          style: { left: tip.left, top: tip.top, width: tip.width + 'px' } },
+          h('strong', null, tip.name || tip.play),
+          tip.name && tip.name !== tip.play ? h('span', { className: 'pt-muted' }, tip.play) : null,
+          h('p', null, tip.text || t('noDescription'))) : null,
         h('div', { className: 'pt-grid' },
           h('aside', { className: 'pt-column' },
-            h('section', { className: 'pt-card', 'aria-label': t('catalog') },
+            h('section', { className: 'pt-card pt-only-work', 'aria-label': t('catalog') },
               h('div', { className: 'pt-card-title' }, h('h3', null, t('catalog')), h('span', { className: 'pt-muted' }, t('selected', { count: selected.length }))),
               h('input', { type: 'search', className: 'pt-input', value: search, 'aria-label': t('search'), placeholder: t('searchHint'), onChange: event => setSearch(event.target.value) }),
               h('div', { className: 'pt-toolbar' },
                 button(t('selectAll'), () => { setSelected(filtered.map(play => play.slug)); invalidate(); }, !filtered.length || !!busy, 'pt-small'),
                 button(t('clearSelection'), () => { setSelected([]); invalidate(); }, !selected.length || !!busy, 'pt-small')),
-              h('div', { className: 'pt-list' }, filtered.length ? filtered.map(play => h('div', {
-                key: play.slug, className: 'pt-choice', 'data-selected': selected.includes(play.slug)
+              h('div', { className: 'pt-list', onScroll: hideTip }, filtered.length ? filtered.map(play => h('div', {
+                key: play.slug, className: 'pt-choice', 'data-selected': selected.includes(play.slug),
+              'data-play': play.slug, 'data-name': play.name || play.slug, 'data-text': play.description || '',
+              onMouseEnter: showTip, onMouseLeave: hideTip, onFocus: showTip, onBlur: hideTip
               }, h('input', { type: 'checkbox', checked: selected.includes(play.slug), disabled: !!busy,
                 'aria-label': play.name || play.slug, onChange: event => {
                   setSelected(old => event.target.checked ? [...old, play.slug] : old.filter(slug => slug !== play.slug)); invalidate();
                 } }), h('div', { className: 'pt-choice-body' },
                 h('button', { type: 'button', className: 'pt-choice-name', disabled: !!busy, onClick: () => {
-                  setSelected([play.slug]); perform('inspect', () => inspect([play.slug]));
-                } }, play.name || play.slug), h('p', null, play.description || play.slug),
+                  // Selection alone triggers the automatic preview above.
+                  setSelected([play.slug]); invalidate();
+                } }, play.name || play.slug),
                 h('div', { className: 'pt-actions' }, h('span', { className: 'pt-badge' }, t('mode.' + (play.mode || 'explore'))),
                   h('span', { className: 'pt-muted' }, t('step') + ': ' + (Array.isArray(play.steps) ? play.steps.length : play.steps || 0))))))
                 : h('p', { className: 'pt-empty' }, t(plays.length ? 'noMatches' : 'noTests')))),
-            h('section', { className: 'pt-card', 'aria-label': t('runs') },
+            h('section', { className: 'pt-card pt-only-run', 'aria-label': t('runs') },
               h('div', { className: 'pt-card-title' }, h('h3', null, t('runs')),
                 button(t('refresh'), () => perform('runs', () => refreshRuns(options())), !!busy, 'pt-small')),
               h('div', { className: 'pt-run-list' }, runs.length ? runs.map(run => h('button', {
@@ -428,24 +727,41 @@ window.__ModuleLoader__.load({
               h('span', { className: 'pt-muted' }, run.startedAt || run.createdAt || ''), h(Badge, { value: run.status, t })))
                 : h('p', { className: 'pt-empty' }, t('noRuns'))))),
           h('div', { className: 'pt-column' },
-            h('section', { className: 'pt-card', 'aria-label': t('previewTitle') },
-              h('div', { className: 'pt-card-title' }, h('h3', null, t('previewTitle')), h('span', { className: 'pt-muted' }, busy ? t('busy') : t('previewOnly'))),
+            h('section', { className: 'pt-card pt-only-work', 'aria-label': t('previewTitle') },
+              h('div', { className: 'pt-card-title' }, h('h3', null, t('previewTitle')), h('span', { className: 'pt-muted' }, previewBusy ? t('previewing') : busy ? t('busy') : t('previewOnly'))),
               h('div', { className: 'pt-options' },
-                h('label', { className: 'pt-field' }, h('span', null, t('target')), h('input', { className: 'pt-input', value: target, disabled: !!busy, placeholder: t('targetHint'), onChange: event => { setTarget(event.target.value); invalidate(); } })),
-                h('label', { className: 'pt-field' }, h('span', null, t('scenario')), h('input', { className: 'pt-input', value: scenario, disabled: !!busy, placeholder: t('scenarioHint'), onChange: event => { setScenario(event.target.value); invalidate(); } }))),
-              h('div', { className: 'pt-actions' },
-                button(t('preview'), () => perform('inspect', () => inspect()), !selected.length || !!busy),
-                button(t('validate'), () => perform('lint', async () => { const data = await call('lint', { ...options(), plays: selected }); if (mounted.current) setValidation(data); }), !selected.length || !!busy)),
+                h('label', { className: 'pt-field' }, h('span', null, t('target')),
+                  targets.length ? h('select', { className: 'pt-input', value: target, disabled: !!busy,
+                    'aria-label': t('target'), onChange: event => { setTarget(event.target.value); invalidate(); } },
+                    h('option', { value: '' }, t('targetAuto')),
+                    targets.map(name => h('option', { key: name, value: name }, name)))
+                    : h('input', { className: 'pt-input', value: target, disabled: !!busy, placeholder: t('targetHint'), onChange: event => { setTarget(event.target.value); invalidate(); } })),
+                h('label', { className: 'pt-field' }, h('span', null, t('scenario')),
+                  picked.length ? h('select', { className: 'pt-input', value: scenario, disabled: !!busy || scenarioLocked,
+                    'aria-label': t('scenario'), onChange: event => { setScenario(event.target.value); invalidate(); } },
+                    h('option', { value: '' }, t('scenarioAuto')),
+                    scenarioNames.map(name => h('option', { key: name, value: name }, scenarioLabel(name))))
+                    : h('input', { className: 'pt-input', value: scenario, disabled: !!busy, placeholder: t('scenarioHint'), onChange: event => { setScenario(event.target.value); invalidate(); } }))),
+              scenarioLocked ? h('p', { className: 'pt-muted' }, t('scenarioLockedHint')) : null,
+              h('div', { className: 'pt-actionbar' },
+                button(t('start'), () => perform('start', start), !canStart, 'pt-primary'),
+                button(t('validate'), () => perform('lint', async () => { const data = await call('lint', { ...options(), plays: selected }); if (mounted.current) setValidation(data); }), !selected.length || !!busy, 'pt-small'),
+                !validPreview && selected.length ? button(t('preview'), () => perform('inspect', () => inspect(selected)), !!busy, 'pt-small') : null),
+              activeRuns.length ? h('p', { className: 'pt-muted' }, t('activeHint')) : null,
               validation ? h(JsonDetails, { title: t('validation'), value: validation, open: true }) : null,
-              !preview ? h('p', { className: 'pt-empty' }, t('readyHint')) : null,
+              !selected.length ? h('p', { className: 'pt-empty' }, t('readyHint')) : null,
               preview && !validPreview ? h('p', { className: 'pt-notice' }, t('stale')) : null,
               preview ? h(React.Fragment, null,
                 h('p', { className: 'pt-muted' }, t('digest') + ': ', preview.data.digest || t('unknown')),
                 (preview.data.issues || []).length ? h(JsonDetails, { title: t('validation'), value: preview.data.issues, open: true }) : null,
                 previewPlays.map(play => h('section', { key: play.slug, className: 'pt-card' },
                   h('div', { className: 'pt-preview-head' }, h('h3', null, play.name || play.slug), h('span', { className: 'pt-badge' }, t('mode.' + (play.mode || 'explore')))),
-                  play.description ? h('p', { className: 'pt-muted' }, play.description) : null,
+                  play.description ? h('details', { className: 'pt-desc' }, h('summary', null, t('description')),
+                    h('p', { className: 'pt-muted' }, play.description)) : null,
                   h('p', { className: 'pt-muted' }, t('target') + ': ' + (play.baseUrl || play.target || t('empty')) + ' · ' + t('scenario') + ': ' + (play.scenario || t('empty'))),
+                  (preview.data.prepare || []).length ? h(React.Fragment, null,
+                    h('h3', null, t('phasePrepare')),
+                    h(StepTable, { steps: (preview.data.prepare || []).map(item => ({ ...item, phase: 'prepare' })), t })) : null,
                   h('h3', null, t('workflow')), h(StepTable, { steps: play.steps, t }),
                   h('details', null, h('summary', null, t('setup')), h(StepTable, { steps: play.setup, t })),
                   h('details', null, h('summary', null, t('cleanup')), h(StepTable, { steps: play.cleanup, t })),
@@ -454,15 +770,21 @@ window.__ModuleLoader__.load({
                     h('p', null, claim.description || claim.id), h('pre', { className: 'pt-code' }, bounded(claim.basis))))
                     : h('p', { className: 'pt-empty' }, t('noClaims'))))),
                 h('h3', null, t('effects')),
-                effects.length ? h('pre', { className: 'pt-code' }, bounded(effects)) : h('p', { className: 'pt-empty' }, t('noEffects')),
-                h(JsonDetails, { title: t('inspectDetails'), value: preview.data.preview || preview.data.snapshot }),
-                needsConfirmation ? h('label', { className: 'pt-confirm' }, h('input', { type: 'checkbox', checked: confirmed, disabled: !!busy, onChange: event => setConfirmed(event.target.checked) }),
-                  h('span', null, t('confirm'), h('small', null, t('confirmHint')))) : null,
-                activeRuns.length ? h('p', { className: 'pt-muted' }, t('activeHint')) : null,
-                button(t('start'), () => perform('start', start), !canStart, 'pt-primary')) : null),
-            runId ? h('section', { className: 'pt-card', 'aria-label': t('run') },
+                effects.length ? h('ul', { className: 'pt-effects' }, (Array.isArray(effects) ? effects : []).map((item, index) => h('li', { key: index },
+                  h('span', { className: 'pt-badge' }, named(t, 'effect.', item.code, item.kind || 'effect')),
+                  h('span', { className: 'pt-muted' }, [named(t, 'phase.', item.phase, item.phase),
+                    item.stepNo != null ? t('step') + ' ' + item.stepNo : '',
+                    item.play || (item.target && typeof item.target === 'object'
+                      ? Object.entries(item.target).map(([k, v]) => k + '=' + v).join(' ') : item.target)]
+                    .filter(Boolean).join(' · '))))) : h('p', { className: 'pt-empty' }, t('noEffects')),
+                h(JsonDetails, { title: t('inspectDetails'), value: preview.data.preview || preview.data.snapshot })) : null),
+            runId ? h('section', { className: 'pt-card pt-only-run', 'aria-label': t('run') },
               h('div', { className: 'pt-card-title' }, h('h3', null, t('run') + ' ' + runId),
                 h('div', { className: 'pt-actions' },
+                  button(t('saveAsPlay'), draftPlay, !!busy || !runId, 'pt-small'),
+                  handoff && runData && (runData.verdict !== 'passed' || runData.execution !== 'completed'
+                    || runData.cleanup === 'failed' || failedSteps(runData.steps).length)
+                    ? button(t('analyzeRun'), analyzeRun, !!busy, 'pt-small') : null,
                   button(t('reloadRun'), () => perform('read', () => readRun(runId, cursor.current, options(), undefined, false)), !!busy, 'pt-small'),
                   activeSelected ? button(t('cancel'), () => perform('cancel', async () => {
                     await call('cancel', { ...options(), runId });
@@ -472,7 +794,7 @@ window.__ModuleLoader__.load({
               runData ? h(React.Fragment, null,
                 h('dl', { className: 'pt-status-grid' }, [['verdict', runData.verdict], ['execution', runData.execution], ['cleanupResult', runData.cleanup]].map(([key, value]) => h('div', { key },
                   h('dt', null, t(key)), h('dd', null, h(Badge, { value, t }))))),
-                h(StepTable, { steps, results: true, t }),
+                h(RunSteps, { steps, t }),
                 h('details', null, h('summary', null, t('assertions')), assertions.length ? assertions.map((assertion, index) => h('div', { key: assertion.id || index, className: 'pt-claim' },
                   h(Badge, { value: assertion.verdict || assertion.status || (assertion.ok === true ? 'passed' : assertion.ok === false ? 'failed' : 'unknown'), t }),
                   h('pre', { className: 'pt-code' }, bounded(assertion)))) : h('p', { className: 'pt-empty' }, t('noAssertions'))),
@@ -484,7 +806,8 @@ window.__ModuleLoader__.load({
                   event.name || event.phase || event.stepNo != null ? h('p', { className: 'pt-event-name' }, [event.phase, event.stepNo != null ? t('step') + ' ' + event.stepNo : '', event.name].filter(Boolean).join(' · ')) : null,
                   h(JsonDetails, { title: t('evidence'), value: event })))) : h('p', { className: 'pt-empty' }, t('noEvents')),
                 h(JsonDetails, { title: t('outcome'), value: runData.result }),
-                h(JsonDetails, { title: t('artifacts'), value: runData.artifacts || recorded.artifacts })) : h('p', { role: 'status', className: 'pt-empty' }, t('busy'))) : null)));
+                h(JsonDetails, { title: t('artifacts'), value: runData.artifacts || recorded.artifacts })) : h('p', { role: 'status', className: 'pt-empty' }, t('busy')))
+ : h('section', { className: 'pt-card pt-only-run' }, h('p', { className: 'pt-empty' }, t('runEmpty'))))))
     }
 
     function PlaytestView(props) {
@@ -493,7 +816,7 @@ window.__ModuleLoader__.load({
       return h(Workbench, { ...props, key: props.sessionId });
     }
     return {
-      inject: ['slots', 'locale', 'remote', 'remote.commands'],
+      inject: ['slots', 'locale', 'remote', 'remote.commands', 'remote.session'],
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { en, zh }), 'playtest: client dictionaries');
         const t = ctx.locale.bind(NS);
@@ -502,6 +825,7 @@ window.__ModuleLoader__.load({
           name: 'conversation.view', id: 'playtest', order: 20,
           label: () => t('title'), locale: NS,
           inject: sessionId => ({
+            handoff: createHandoff(remoteNamespace(ctx.remote, 'session')),
             request: (_sessionId, payload, signal) => request(sessionId, payload, signal), sessionId
           })
         }, PlaytestView));

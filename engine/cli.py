@@ -10,8 +10,9 @@ import json
 import re
 import sys
 
-from common import EngineError, MAX_ASSET_BYTES, compile_request, redact, repository, safe_path
-from linter import catalog, lint
+from common import ASSETS, EngineError, ensure_assets_ignore, MAX_ASSET_BYTES, compile_request, redact, repository, safe_path
+from authoring import create, draft
+from linter import catalog, lint, repositories
 from player import RunCancelled, run, timestamp
 
 
@@ -20,7 +21,7 @@ def scaffold(command):
     name = command.get("name")
     if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
         raise EngineError("name must be a kebab-case slug")
-    directory = safe_path(root, "test-plays/" + name)
+    directory = ensure_assets_ignore(root) / name
     if directory.exists():
         raise EngineError("Play directory already exists; scaffold does not overwrite assets", "asset_exists")
     play = {
@@ -63,10 +64,16 @@ def dispatch(command, output=None):
         return catalog(command)
     if action == "lint":
         return lint(command)
+    if action == "repos":
+        return repositories(command)
     if action == "scaffold":
         return scaffold(command)
+    if action == "create":
+        return create(command)
+    if action == "draft":
+        return draft(command)
     if action not in ("inspect", "run"):
-        raise EngineError("action must be catalog, inspect, lint, scaffold, or run")
+        raise EngineError("action must be catalog, repos, inspect, lint, scaffold, create, draft, or run")
     inspected = compile_request(command)
     if action == "inspect":
         return {**inspected, "snapshot": redact(inspected["snapshot"])}

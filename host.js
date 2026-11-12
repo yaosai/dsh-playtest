@@ -3,6 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+// Mirrors engine/common.py: one directory per repository holds the committed plays
+// and the generated evidence; the engine rejects the pre-1.9 layout explicitly.
+const ASSETS_DIR = '.test-plays';
+const RUNS_DIR = join(ASSETS_DIR, 'runs');
 const LIMIT = 1024 * 1024;
 const RUN_ID = /^[a-zA-Z0-9_-]{1,80}$/;
 const ACTIVE = new Set(['running', 'starting', 'cancelling']);
@@ -15,7 +19,7 @@ export function exitFacts(outcome) {
 }
 
 /** Keep tool output JSON-safe: numbers stay finite, big ints/long strings are stringified. */
-function lossless(value, limit = 64 * 1024) {
+export function lossless(value, limit = 64 * 1024) {
   try {
     return JSON.parse(JSON.stringify(value, (_key, item) => {
       if (typeof item === 'number' && !Number.isFinite(item)) return String(item);
@@ -133,8 +137,11 @@ export class PlaytestOperations {
   async authorize(env, args, preview, caller, callId) {
     if (!preview.requiresConfirmation) return true;
     if (caller === 'user') {
-      if (args.userConfirmedEffects !== true || !args.expectedDigest) {
-        throw new Error('Review the current preview and explicitly confirm real-system/database effects before starting.');
+      // Clicking Start in the plugin view, on a preview the user just saw, is the
+      // human grant. The digest still pins it to exactly those reviewed assets, so
+      // a silent asset change cannot be started under an older decision.
+      if (!args.expectedDigest) {
+        throw new Error('Start requires the reviewed snapshot digest; the preview was not shown for this selection.');
       }
       return true;
     }
@@ -199,6 +206,7 @@ export class PlaytestOperations {
       record.sandboxEnforcement = child.enforcement;
       this.runs.set(runId, record);
       const timeout = setTimeout(() => { record.status = 'cancelling'; child.handle.terminate(); }, 15 * 60 * 1000);
+      timeout.unref?.();
       record.done = child.done.then(result => {
         record.result = { ...result, ownerSessionId: env.agent.id };
         record.status = result.status || (result.ok ? 'completed' : 'failed');
@@ -207,7 +215,7 @@ export class PlaytestOperations {
         record.status = 'error';
       }).finally(() => { clearTimeout(timeout); record.finishedAt = new Date().toISOString(); });
       return { ok: true, runId, status: 'running', repoRoot: env.repoRoot, digest: preview.digest,
-        artifacts: join(env.repoRoot, '.playtest', 'runs', runId), sandboxEnforcement: child.enforcement,
+        artifacts: join(env.repoRoot, RUNS_DIR, runId), sandboxEnforcement: child.enforcement,
         hint: 'Read this run with playtest action=read; cancellation stops the run and attempts cleanup.' };
     } finally { this.pending.delete(env.repoRoot); }
   }
@@ -222,12 +230,12 @@ export class PlaytestOperations {
 
   async historical(env, runId) {
     if (!RUN_ID.test(runId || '')) throw new Error('Invalid runId.');
-    const root = await env.fs.resolve(join(env.repoRoot, '.playtest', 'runs'));
-    const file = await env.fs.resolve(join(env.repoRoot, '.playtest', 'runs', runId, 'result.json'));
+    const root = await env.fs.resolve(join(env.repoRoot, RUNS_DIR));
+    const file = await env.fs.resolve(join(env.repoRoot, RUNS_DIR, runId, 'result.json'));
     if (!env.fs.contains(env.target, root) || !env.fs.contains(root, file)) throw new Error('Run artifact escapes repository.');
     const info = await env.fs.stat(file);
     if (!info) {
-      const events = await env.fs.resolve(join(env.repoRoot, '.playtest', 'runs', runId, 'events.jsonl'));
+      const events = await env.fs.resolve(join(env.repoRoot, RUNS_DIR, runId, 'events.jsonl'));
       if (!env.fs.contains(root, events)) throw new Error('Run events escape repository.');
       const bytes = await env.fs.readByteRange(events, { offset: 0, length: 8192 });
       const first = JSON.parse(Buffer.from(bytes).toString('utf8').split('\n')[0]);
@@ -250,17 +258,17 @@ export class PlaytestOperations {
       const next = Math.max(after, record.count - 100);
       return { ok: true, ...this.summary(record), steps: record.result?.steps || record.steps,
         events: record.events.filter(e => e.offset > next), nextOffset: record.count,
-        truncated: next > after, result: record.result, artifacts: join(env.repoRoot, '.playtest', 'runs', record.runId) };
+        truncated: next > after, result: record.result, artifacts: join(env.repoRoot, RUNS_DIR, record.runId) };
     }
     const result = await this.historical(env, args.runId);
     return { ok: true, runId: args.runId, status: result.status, verdict: result.verdict,
       execution: result.execution, cleanup: result.cleanup, steps: result.steps || [], result,
-      events: [], nextOffset: 0, historical: true, artifacts: join(env.repoRoot, '.playtest', 'runs', args.runId) };
+      events: [], nextOffset: 0, historical: true, artifacts: join(env.repoRoot, RUNS_DIR, args.runId) };
   }
 
   async listRuns(env) {
     const summaries = [...this.runs.values()].filter(r => r.repoRoot === env.repoRoot && r.ownerSessionId === env.agent.id).map(r => this.summary(r));
-    const root = await env.fs.resolve(join(env.repoRoot, '.playtest', 'runs'));
+    const root = await env.fs.resolve(join(env.repoRoot, RUNS_DIR));
     if (env.fs.contains(env.target, root) && (await env.fs.stat(root))?.type === 'directory') {
       for (const entry of (await env.fs.listDir(root)).slice(-50)) {
         if (entry.type !== 'directory' || summaries.some(r => r.runId === entry.name)) continue;
@@ -292,9 +300,17 @@ export class PlaytestOperations {
           const value = this.invoke(env, { action: 'catalog' });
           return value.then(item => ({ ...item, demoRepo: env.fs.processPathFromHostPath(join(HERE, 'examples', 'demo-project')) }));
         }
+        case 'repos': {
+          const value = this.invoke(env, { action: 'repos' });
+          return value.then(item => ({ ...item, demoRepo: env.fs.processPathFromHostPath(join(HERE, 'examples', 'demo-project')) }));
+        }
         case 'inspect': return this.preview(env, args);
         case 'lint': return this.invoke(env, { action: 'lint', play: args.play, plays: args.plays });
         case 'scaffold': this.checkWrite(env); return this.invoke(env, { action: 'scaffold', name: args.name });
+        case 'create': this.checkWrite(env); return this.invoke(env, { action: 'create', name: args.name,
+          title: args.title, target: args.target, description: args.description });
+        case 'draft': this.checkWrite(env); return this.invoke(env, { action: 'draft', runId: args.runId,
+          name: args.name, title: args.title, play: args.play });
         case 'start': {
           let selected = args;
           return (async () => {

@@ -9,14 +9,14 @@ const text = readFileSync(new URL('./SKILL.md', import.meta.url), 'utf8');
 const description = text.match(/^description:\s*(.+)$/m)?.[1] || 'Business tests with explicit expectations and observable execution.';
 const content = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
 const repo = { type: 'string', description: '仓库根目录；省略使用当前会话目录。' };
-const play = { type: 'string', description: 'test-plays 下剧本目录名，或仓库内剧本路径。' };
+const play = { type: 'string', description: '`.test-plays` 下剧本目录名，或仓库内剧本路径。' };
 const scenario = { type: 'string', description: '剧本目录内场景文件；省略使用 scenario.json。' };
-const target = { type: 'string', description: '.playtest.json 中的目标名称；省略使用场景或剧本目标。' };
+const target = { type: 'string', description: '.test-plays/config.json 中的目标名称；省略使用场景或剧本目标。' };
 
 function compact(value) {
   if (!value.ok) return `❌ ${value.error || '操作失败'}\n${JSON.stringify(value.issues || [], null, 2)}`;
-  if (value.runId && value.status === 'running' && !value.steps) return `▶ 测试已开始：${value.runId}\n仓库：${value.repoRoot}\n使用 playtest(action="read", runId="${value.runId}") 查看步骤与结果；cancel 可停止。`;
-  if (value.steps) {
+  if (value.runId && value.status === 'running' && !Array.isArray(value.steps)) return `▶ 测试已开始：${value.runId}\n仓库：${value.repoRoot}\n使用 playtest(action="read", runId="${value.runId}") 查看步骤与结果；cancel 可停止。`;
+  if (Array.isArray(value.steps)) {
     const summary = [`运行 ${value.runId}：${value.status}`, `断言：${value.verdict}；执行：${value.execution}；清理：${value.cleanup}`];
     for (const s of value.steps.slice(-50)) summary.push(`${s.status === 'passed' ? '✅' : s.status === 'failed' ? '❌' : '◦'} [${s.phase || 'play'}] ${s.stepNo} ${s.name} — ${s.status}${s.error ? ': ' + s.error : ''}`);
     const details = JSON.stringify({ events: value.events, result: value.result }, null, 2);
@@ -48,7 +48,7 @@ export function apply(ctx, config = {}) {
   });
 
   define('playtest', '发现或预览业务测试资产，查看本次会话的运行、步骤与证据，或取消运行。预览不调用被测系统。',
-    { action: { type: 'string', enum: ['catalog','inspect','runs','read','cancel'], description: 'catalog 列剧本；inspect 预览；runs 历史；read 读运行；cancel 停止。' },
+    { action: { type: 'string', enum: ['repos','catalog','inspect','runs','read','cancel'], description: 'repos 列出 Git 仓库；catalog 列剧本；inspect 预览；runs 历史；read 读运行；cancel 停止。' },
       repoRoot: repo, play, scenario, target,
       runId: { type: 'string', description: 'read/cancel 的运行标识。' },
       after: { type: 'integer', description: 'read 的事件游标，默认 0；返回 nextOffset。' } }, ['action'], args => args);
@@ -68,8 +68,20 @@ export function apply(ctx, config = {}) {
     { repoRoot: repo, only: { type: 'string', description: '逗号分隔剧本目录名；省略检查全部。' } }, [],
     args => ({ action: 'lint', repoRoot: args.repoRoot, plays: args.only ? args.only.split(',').map(s=>s.trim()).filter(Boolean) : undefined }));
 
-  define('playtest_new_play', '创建可直接播放的本地 HTTP mock 示例剧本与独立场景；后续由 agent 按当前业务目标替换，不猜真实接口。',
-    { repoRoot: repo, name: { type: 'string', description: '新剧本目录名，kebab-case。' } }, ['name'], args => ({ ...args, action: 'scaffold' }));
+  define('playtest_new_play', '在仓库 `.test-plays/` 下新建剧本；已存在则拒绝，绝不覆盖资产。',
+    { repoRoot: repo, name: { type: 'string', description: '新剧本目录名，kebab-case。' },
+      title: { type: 'string', description: '剧本标题：一句能读懂的业务目标（界面显示它）。省略时用 name；真实验证应写清楚。' },
+      target: { type: 'string', description: '`.test-plays/config.json` 里已声明的目标名；省略则不绑定目标，不能调用真实服务。' },
+      description: { type: 'string', description: '要验证什么，以及依据（需求/契约/已确认案例）；不填则留空待补。' },
+      example: { type: 'boolean', description: 'true=生成自带本地 HTTP mock 的可播放示例（不碰外部系统）；默认 false，生成不含步骤的业务骨架，由你按当前系统补齐。' } },
+    ['name'], args => ({ ...args, action: args.example === true ? 'scaffold' : 'create' }));
+
+  define('playtest_save_play', '把一次已记录的播放沉淀成新剧本：步骤复制，未断言的字段写入观察到的值并标注来源；不覆盖已有剧本。',
+    { repoRoot: repo, runId: { type: 'string', description: '要沉淀的运行标识。' },
+      name: { type: 'string', description: '新剧本目录名，kebab-case。' },
+      play: { type: 'string', description: '该运行包含多个剧本时，指定沉淀哪一个。' },
+      title: { type: 'string', description: '新剧本标题；省略沿用原剧本名。' } }, ['runId', 'name'],
+    args => ({ ...args, action: 'draft' }));
 
   ctx.commands.register({ name: 'playtest', description: '业务测试：查看资产、播放与观察结果。',
     input: { hint: 'JSON operation, e.g. {"action":"catalog"}' }, recordInput: false,

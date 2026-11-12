@@ -18,8 +18,8 @@ from pathlib import Path
 from urllib import error, request
 from urllib.parse import urlsplit, urljoin, quote
 
-from common import (EngineError, MISSING, MAX_RESPONSE_BYTES, MAX_ROWS,
-                    CLEANUP_SECONDS, equal, evidence, origin, redact,
+from common import (ASSETS, CACHE, EngineError, MISSING, MAX_RESPONSE_BYTES, MAX_ROWS, ensure_assets_ignore,
+                    CLEANUP_SECONDS, RUNS, equal, evidence, origin, redact,
                     safe_path, substitute, json_path, secret_values, validate_steps)
 
 
@@ -109,7 +109,7 @@ class Mock:
                 mock.events.emit("mock_request", play=mock.play, mock=mock.id,
                                  method=self.command, path=path, evidence=record)
                 route = next((r for r in mock.spec.get("routes", [])
-                              if r.get("path") == path and str(r.get("method", "GET")).upper() == self.command), None)
+                              if r.get("path") == path and str(r.get("method", "GET")).upper() in (self.command, "*")), None)
                 status = int(route.get("status", 200)) if route else 404
                 payload = substitute(route.get("body"), mock.variables) if route else {"error": "No matching mock route"}
                 encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -156,7 +156,10 @@ class Runner:
         import re
         if not isinstance(self.run_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}", self.run_id):
             raise EngineError("runId must be a safe identifier", "path_restriction")
-        runs_dir = safe_path(self.root, ".playtest/runs")
+        runs_dir = safe_path(self.root, RUNS)
+        # npm strips .gitignore from packages, and copied-in assets bring no ignore rule;
+        # writing evidence is the moment a repository demonstrably needs one.
+        ensure_assets_ignore(self.root)
         self.run_dir = safe_path(self.root, str(runs_dir / self.run_id))
         if self.run_dir.exists():
             raise EngineError("Run id already exists; historical runs are immutable", "run_exists")
@@ -226,7 +229,7 @@ class Runner:
         path = step["path"]
         if not isinstance(path, str):
             raise EngineError("Resolved HTTP path is not a string")
-        base_url = self.item.get("baseUrl")
+        base_url = step.get("baseUrl") or self.item.get("baseUrl")
         if path.startswith(("http://", "https://")):
             url = path
         elif base_url:
@@ -369,6 +372,61 @@ class Runner:
         self.events.emit("assertion", assertion=item, play=self.item["slug"], stepId=record["id"])
         return ok
 
+    def unit(self, record, step, kind):
+        """Run one action or verification; assertions land on the owning step."""
+        failures = False
+        if kind == "wait":
+            self.wait(float(step["seconds"]))
+            observation = {"seconds": step["seconds"]}
+        elif kind == "http":
+            status, payload, is_json, observation = self.http(step)
+            expectation = step.get("expect", {})
+            if "status" in expectation:
+                wanted = expectation["status"]
+                failures |= not self.assertion(record, "http.status", status, wanted, observation, isinstance(wanted, list))
+            for expression, wanted in expectation.get("json", {}).items():
+                actual = json_path(payload, expression) if is_json else MISSING
+                failures |= not self.assertion(record, expression, actual, wanted, observation)
+            for variable, expression in step.get("extractFromResponse", {}).items():
+                actual = json_path(payload, expression) if is_json else MISSING
+                if actual is MISSING:
+                    raise EngineError("Response extraction path is missing: " + expression, "missing_variable")
+                self.variables[variable] = actual
+        elif kind in ("dbQuery", "dbWait"):
+            expectation = step.get("expect", {})
+            deadline = time.monotonic() + float(step.get("timeoutSeconds", 60))
+            attempts = 0
+            while True:
+                self.checkpoint()
+                rows, observation = self.query(step)
+                attempts += 1
+                matches = bool(rows) and all(equal(rows[0].get(k, MISSING), v) for k, v in expectation.items())
+                if kind == "dbQuery" or matches or time.monotonic() >= deadline:
+                    break
+                self.events.emit("step_progress", play=self.item["slug"], stepId=record["id"], attempts=attempts,
+                                 evidence=evidence({"rows": rows, "waitingFor": expectation}))
+                self.wait(min(float(step.get("intervalSeconds", 1)), max(0, deadline - time.monotonic())))
+            observation["attempts"] = attempts
+            for column, wanted in expectation.items():
+                actual = rows[0].get(column, MISSING) if rows else MISSING
+                failures |= not self.assertion(record, column, actual, wanted, observation)
+            for variable, column in step.get("extract", {}).items():
+                if not rows or column not in rows[0]:
+                    raise EngineError("Database extraction column missing: " + column, "missing_variable")
+                self.variables[variable] = rows[0][column]
+        elif kind == "mockVerify":
+            mock = self.mocks.get(step["mock"])
+            if mock is None:
+                raise EngineError("Unknown mock: " + step["mock"], "unknown_mock")
+            actual = mock.count(step.get("path"), step.get("method"))
+            observation = {"mock": mock.id, "path": step.get("path"), "method": step.get("method"),
+                           "count": actual, "total": mock.total, "requests": mock.records,
+                           "requestsTruncated": mock.total > len(mock.records)}
+            failures |= not self.assertion(record, "mock.requestCount", actual, step["count"], observation)
+        else:
+            raise EngineError("Unsupported step type: " + str(kind))
+        return failures, observation
+
     def execute_step(self, source, phase, index):
         self.checkpoint()
         number = source.get("stepNo", index + 1)
@@ -376,7 +434,7 @@ class Runner:
                   "play": self.item["slug"], "phase": phase, "stepNo": number,
                   "name": source.get("name", "Step " + str(number)),
                   "type": source.get("type", "http"), "status": "observed", "ok": True,
-                  "assertionCount": 0, "evidence": evidence({})}
+                  "assertionCount": 0, "checks": [], "evidence": evidence({})}
         self.events.emit("step_started", step=record.copy(), play=self.item["slug"], phase=phase)
         started = time.monotonic()
         try:
@@ -385,59 +443,48 @@ class Runner:
             if runtime_issues:
                 raise EngineError("Resolved step is invalid: " + "; ".join(i["message"] for i in runtime_issues), "invalid_step")
             kind = record["type"]
-            failures = False
-            if kind == "wait":
-                self.wait(float(step["seconds"]))
-                observation = {"seconds": step["seconds"]}
-            elif kind == "http":
-                status, payload, is_json, observation = self.http(step)
-                expectation = step.get("expect", {})
-                if "status" in expectation:
-                    wanted = expectation["status"]
-                    failures |= not self.assertion(record, "http.status", status, wanted, observation, isinstance(wanted, list))
-                for expression, wanted in expectation.get("json", {}).items():
-                    actual = json_path(payload, expression) if is_json else MISSING
-                    failures |= not self.assertion(record, expression, actual, wanted, observation)
-                for variable, expression in step.get("extractFromResponse", {}).items():
-                    actual = json_path(payload, expression) if is_json else MISSING
-                    if actual is MISSING:
-                        raise EngineError("Response extraction path is missing: " + expression, "missing_variable")
-                    self.variables[variable] = actual
-            elif kind in ("dbQuery", "dbWait"):
-                expectation = step.get("expect", {})
-                deadline = time.monotonic() + float(step.get("timeoutSeconds", 60))
-                attempts = 0
-                while True:
-                    self.checkpoint()
-                    rows, observation = self.query(step)
-                    attempts += 1
-                    matches = bool(rows) and all(equal(rows[0].get(k, MISSING), v) for k, v in expectation.items())
-                    if kind == "dbQuery" or matches or time.monotonic() >= deadline:
-                        break
-                    self.events.emit("step_progress", play=self.item["slug"], stepId=record["id"], attempts=attempts,
-                                     evidence=evidence({"rows": rows, "waitingFor": expectation}))
-                    self.wait(min(float(step.get("intervalSeconds", 1)), max(0, deadline - time.monotonic())))
-                observation["attempts"] = attempts
-                for column, wanted in expectation.items():
-                    actual = rows[0].get(column, MISSING) if rows else MISSING
-                    failures |= not self.assertion(record, column, actual, wanted, observation)
-                for variable, column in step.get("extract", {}).items():
-                    if not rows or column not in rows[0]:
-                        raise EngineError("Database extraction column missing: " + column, "missing_variable")
-                    self.variables[variable] = rows[0][column]
-            elif kind == "mockVerify":
-                mock = self.mocks.get(step["mock"])
-                if mock is None:
-                    raise EngineError("Unknown mock: " + step["mock"], "unknown_mock")
-                actual = mock.count(step.get("path"), step.get("method"))
-                observation = {"mock": mock.id, "path": step.get("path"), "method": step.get("method"),
-                               "count": actual, "total": mock.total, "requests": mock.records,
-                               "requestsTruncated": mock.total > len(mock.records)}
-                failures |= not self.assertion(record, "mock.requestCount", actual, step["count"], observation)
-            else:
-                raise EngineError("Unsupported step type: " + str(kind))
+            failures, observation = self.unit(record, step, kind)
+            # Verifications are part of this step: the step only passes when its
+            # action AND every check passed. They never become steps of their own.
+            check_error = None
+            for position, check in enumerate(step.get("checks") or []):
+                self.checkpoint()
+                entry = {"index": position + 1,
+                         "name": check.get("name") or "Check " + str(position + 1),
+                         "type": check.get("type"), "status": "observed", "assertionCount": 0}
+                before = record["assertionCount"]
+                started_check = time.monotonic()
+                pending = None
+                try:
+                    check_failures, check_observation = self.unit(record, check, check.get("type"))
+                except RunCancelled as exc:
+                    entry.update(status="cancelled", error="Run cancelled")
+                    pending = exc
+                except AssertionFailed as exc:
+                    entry.update(status="failed", error=str(exc))
+                    pending = exc
+                except BaseException as exc:
+                    entry.update(status="error", error=str(redact(str(exc))),
+                                 errorCode=getattr(exc, "code", "execution"))
+                    check_error = exc
+                else:
+                    failures |= check_failures
+                    entry["status"] = ("failed" if check_failures
+                                       else "passed" if record["assertionCount"] > before else "observed")
+                    entry["evidence"] = evidence(check_observation)
+                finally:
+                    entry["assertionCount"] = record["assertionCount"] - before
+                    entry["durationMs"] = round((time.monotonic() - started_check) * 1000)
+                record["checks"].append(entry)
+                if pending is not None:
+                    raise pending
+                if check_error is not None:
+                    break
+
             record["evidence"] = evidence(observation)
             self.checkpoint()
+            if check_error is not None:
+                raise check_error
             if failures:
                 raise AssertionFailed("Explicit assertion mismatch")
             record["status"] = "passed" if record["assertionCount"] else "observed"
@@ -500,6 +547,7 @@ class Runner:
                     self.variables[name] = substitute(value, self.variables)
                 if previous == self.variables:
                     break
+            self.phase("prepare", item["phases"].get("prepare", []))
             self.phase("setup", item["phases"]["setup"])
             self.phase("play", item["phases"]["play"])
         except RunCancelled:
@@ -511,18 +559,28 @@ class Runner:
             self.exit_code = max(self.exit_code, 1)
             if self.current_phase == "setup":
                 execution = "failed"
+            if self.current_phase == "prepare":
+                execution = "blocked"
+                self.exit_code = 2  # environment not ready, not a business failure
         except Exception as exc:
-            execution = "failed"
+            execution = "blocked" if self.current_phase == "prepare" else "failed"
             run_error = str(redact(str(exc)))
             code = getattr(exc, "code", "execution")
             if self.exit_code != 130:
-                self.exit_code = 2 if code in ("transport", "unknown_target", "missing_database", "path_restriction", "origin_restriction", "effects_required") else 1
+                self.exit_code = 2 if execution == "blocked" or code in (
+                    "transport", "unknown_target", "missing_database", "path_restriction",
+                    "origin_restriction", "effects_required") else 1
             self.events.emit("execution_error", play=item["slug"], error=run_error, code=code)
         finally:
             self.cleaning = True
             self.cleanup_deadline = time.monotonic() + float(item.get("cleanupSeconds", CLEANUP_SECONDS))
             try:
-                if self.command.get("skipCleanup"):
+                if execution == "blocked":
+                    cleanup = "skipped"
+                    self.events.emit("phase_started", play=item["slug"], phase="cleanup")
+                    self.events.emit("phase_finished", play=item["slug"], phase="cleanup", status="skipped",
+                                     reason="场景准备未通过，剧本没有执行，无需清理")
+                elif self.command.get("skipCleanup"):
                     cleanup = "skipped"
                     self.events.emit("phase_started", play=item["slug"], phase="cleanup")
                     self.events.emit("phase_finished", play=item["slug"], phase="cleanup", status="skipped")
@@ -582,7 +640,12 @@ class Runner:
             self.events.emit("execution_error", error=str(redact(str(exc))), code=getattr(exc, "code", "execution"))
         finally:
             self.restore_signal_handler()
-        execution = "cancelled" if self.cancelled.is_set() or any(s["execution"] == "cancelled" for s in subruns) else "failed" if len(subruns) != len(self.snapshot["plays"]) or any(s["execution"] == "failed" for s in subruns) else "completed"
+        # A blocked play means the environment was never ready; it is neither a
+        # business assertion failure nor a completed run.
+        execution = ("cancelled" if self.cancelled.is_set() or any(s["execution"] == "cancelled" for s in subruns)
+                     else "blocked" if any(s["execution"] == "blocked" for s in subruns)
+                     else "failed" if len(subruns) != len(self.snapshot["plays"]) or any(s["execution"] == "failed" for s in subruns)
+                     else "completed")
         cleanup = "failed" if any(s["cleanup"] == "failed" for s in subruns) else "unknown" if any(s["cleanup"] == "unknown" for s in subruns) else "skipped" if any(s["cleanup"] == "skipped" for s in subruns) else "completed"
         verdict = "failed" if any(s["verdict"] == "failed" for s in subruns) else "passed" if subruns and all(s["verdict"] == "passed" for s in subruns) and execution == "completed" else "inconclusive"
         ok = execution == "completed" and cleanup in ("completed", "skipped") and verdict != "failed"

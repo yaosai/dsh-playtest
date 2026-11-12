@@ -3,10 +3,19 @@
 本插件不是 agent/harness：不调用 LLM，不管理模型会话，不提供通用计划审批。skill 引导现有 agent；工具和 UI 共用测试操作；Python 引擎无 DSH 也能运行。
 
 ## 资产
-- `<repo>/test-plays/<slug>/play.json`：version=1，scenarioName，description，mode=explore|baseline|acceptance，claims（id/description/basis，可选），steps。
+- `<repo>/.test-plays/<slug>/play.json`：version=1，scenarioName，description，mode=explore|baseline|acceptance，claims（id/description/basis，可选），steps。
 - 同目录 `scenario.json`（可选，或指定同目录下其他场景文件）：variables、setup 步骤、cleanup 步骤、mocks；play 也可包含 cleanup。
-- `<repo>/.playtest.json`（可选）：targets {name:{baseUrl,description}}、databases {name:{driver:'sqlite',path:'相对仓库路径'}}。不默认 SAP、8080、Spring health、任何旧 skill。
-- 运行资产 `<repo>/.playtest/runs/<runId>/`：snapshot.json、events.jsonl、result.json。剧本本身不回写。
+- `<repo>/.test-plays/config.json`（可选）：targets {name:{baseUrl,description}}、databases {name:{driver:'sqlite',path:'相对仓库路径'}}。不默认某个项目的接口名、端口、框架健康路径或某个旧 skill。
+- 运行资产 `<repo>/.test-plays/runs/<runId>/`：snapshot.json、events.jsonl、result.json。剧本本身不回写。
+
+## 阶段
+
+一次播放固定：`prepare`（项目声明的只读就绪检查）→ `setup`（场景数据准备）→ `play`（业务步骤）→ `cleanup`（收尾）。
+
+- `prepare` 来自 `.test-plays/config.json` 顶层，不是剧本字段；插件不解释“就绪”的业务含义，只执行项目声明的检查。
+- 只允许 `http`（GET/HEAD/OPTIONS、无 body）、`dbQuery`、`dbWait`，且必须有非空 `expect`；DB 检查必须只读。每个剧本执行前跑一次自己的 prepare。
+- prepare 失败：该 play `execution:"blocked"`、`verdict:"inconclusive"`、`cleanup:"skipped"`（未改动任何东西），进程退出码 2；setup/play 不再执行。prepare 的断言不计入业务 verdict。
+- prepare 的真实调用/适配器读取照常进入 `effects`，`play` 字段为该剧本名（因为它按剧本执行）。
 
 ## 步骤
 - http（默认）：method/path/body/headers，expect {status, json:{'$.path':value}}，extractFromResponse {var:'$.path'}。
@@ -17,9 +26,55 @@
 - 变量：`${runId}`、`${runDir}`、`${mock.<id>.url}`、自定义变量、响应提取变量；整值替换保留 JSON 类型；缺失变量失败，不使用 eval。
 - 无断言的动作可执行但只算 observed，不冒充验收通过；HTTP 状态码显式检查，网络错误不能成为预期业务拒绝。
 - 首版拒绝旧 expectFailure 的模糊语义并提供迁移提示；有明确 expect.status/json 才验证失败分支。
+- `dbWait` 允许只有 `extract` 没有 `expect`：等待条件就是“行出现并取到列”；两者都没有时报 `db_wait_expect`。
+- mock route 的 `method` 可为 `"*"`：应答任意方法（迁移旧桩时用，旧桩 GET/POST 都答）。
+- `preview.assertions` 只统计业务步骤；`preview.prepareAssertions` 单独给出场景准备的断言数。场景准备永不掩盖“业务步骤无断言”的警告。
+- `checks`（可选，每步最多 32 项）：内嵌校验，随所属步骤执行，不产生独立步骤。只能使用 dbQuery/dbWait/mockVerify；不得嵌套；动作类型会被拒绝。
+  - 步骤状态：动作断言与全部 checks 通过 => passed；任一断言不匹配 => failed 并停止后续步骤。
+  - check 自身抛错（适配器/网络/变量）=> 该 check 记 `status:"error"` + `errorCode`，步骤 failed，且与断言不匹配区分。
+  - step.checks[] 记录 {index,name,type,status,assertionCount,durationMs,error?,errorCode?,evidence?}；step.assertionCount 含 checks 的断言。
+  - check 可 `extract` 变量供后续步骤使用；断言仍归属父 step 的 stepId。
 
-## engine/cli.py：一个 stdin JSON 请求
-`{action,repoRoot,play?,plays?,scenario?,target?,expectedDigest?,runId?,allowEffects?,skipCleanup?}`
+## 交给 agent（视图 → 新会话）
+
+「创建」在骨架写完后调用同一对被 GUI 使用的 Remote 能力,不新增注入依赖(来自已注入的 `@deepseek-ai/dsh-api-remotes`):
+
+- `session.create({ cwd })` → `{ sessionId }`（响应可能包在 `RemoteResult` 里,两种形状都要接）
+- `session.prompt({ requestId, sessionId, mode: "queue", content: [{type:"text", text}] }, signal)` → `{ accepted: true }`
+
+`requestId` 由客户端生成并持久化在正好一条被接受的用户消息上,重复提交因此幂等。骨架已经落盘:交接失败只报告,不回滚、不假装没建。宿主缺该命名空间时,视图退化为提示用户自己对 agent 说一声。
+
+## 失败交接（运行 → agent）
+
+界面在运行结论非 passed 时提供交接，`session.prompt` 的正文必须携带：`runId`、剧本名、`verdict/execution/cleanup` 三元组、`artifacts.runDir`、未通过步骤（阶段、步号、名称、状态、断言消息）。措辞由界面 locale 提供，插件不解释失败原因本身——归因是 agent 的工作，且必须限定在「剧本错 / 环境夹具不满足 / 真实业务缺陷」三类之一，禁止以放宽断言换取通过。
+
+## 目录（catalog）给选择器的字段
+
+`catalog` 每个剧本除 `slug/name/description/mode/steps/scenarios` 外还带 `defaultScenario`（取 `play.json` 的 `scenario` 字段，缺省 `scenario.json`）；顶层带 `targets`（`.test-plays/config.json` 中 `targets` 的键名，已排序）。这些只服务界面下拉框，不参与摘要计算。
+
+## 效果（effects）
+
+预览不连接任何东西，只列出将要发生的真实动作。每条效果带稳定机器码 `code`，界面按它本地化：
+
+- `http.external`：调用非本插件启动的服务（含 target/baseUrl 解析后的目标）
+- `database.command`：调用项目侧 command 适配器（含只读查询）
+- `database.write`：写入 SQLite 或影响不可判定的 SQL
+
+`description` 保持英文供 agent/CLI 阅读；`requiresConfirmation` 决定是否必须人来点播放。
+
+## 资产写入（create / draft）
+
+两者都拒绝覆盖已存在的剧本目录，且必须通过 Host 的文件写权限检查（read-only 会话与越出工作区的仓库都会被挡下）。
+
+- `create {title,name?,target?,description?}` →（`name` 省略时由标题推导 kebab 目录名:英文/数字词优先,纯中文落 `play-<sha256前缀>`;冲突则加长哈希。仓库只有一个 target 时自动采用,多个则不猜） `.test-plays/<name>/{play.json,scenario.json,NOTES.md}`；play 为 `mode: explore`、`steps: []`。不猜接口、不生成断言。
+- `draft {runId,name?,play?,title?}` →（`name` 省略时为 `<所播剧本>-observed`,占用则加 runId 哈希后缀；`title` 省略时沿用原标题并加“（沉淀）”） 读取 `.test-plays/runs/<runId>/snapshot.json`（步骤证据优先取 `result.json`，缺失时回退 `events.jsonl`）复制该剧本与场景，再按规则补断言：
+  - 只填原步骤**没有**的字段；已有 expect 一律保留。
+  - 状态失败 / 该步在这轮失败 / 证据 `truncated` / 值含 `[REDACTED]` / HTTP ≥400 → 不写成预期，只记入 NOTES.md。
+  - HTTP 取顶层标量、DB 取首行标量，各上限 8 个字段。
+  - 产物始终 `mode: explore`，`source.kind = "draft"` 并记 `runId`/`runDigest`。
+
+`engine/cli.py：一个 stdin JSON 请求`
+`{action,repoRoot,play?,plays?,scenario?,target?,expectedDigest?,runId?,allowEffects?,skipCleanup?,name?,title?,description?}`
 - catalog：返回 `{ok,repoRoot,plays:[{slug,name,description,mode,steps,scenarios}]}`。
 - inspect：返回 `{ok,digest,requiresConfirmation,effects,issues,preview,snapshot}`。snapshot 必须完整覆盖执行所需资产（配置、剧本、场景、引用内容），预览不执行请求/造数。
 - lint：返回 `{ok,errors,warnings,issues}`，检查已选或全部 play；未知选择/空目录不能假绿。

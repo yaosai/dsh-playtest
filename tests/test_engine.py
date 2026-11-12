@@ -22,7 +22,7 @@ class EngineTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="playtest-engine-")
         self.root = Path(self.temp.name).resolve()
-        self.directory = self.root / "test-plays" / "demo"
+        self.directory = self.root / ".test-plays" / "demo"
         self.directory.mkdir(parents=True)
 
     def tearDown(self):
@@ -60,7 +60,7 @@ class EngineTests(unittest.TestCase):
         return result, events
 
     def sqlite_config(self, path="${runDir}/db.sqlite"):
-        self.write_json(self.root / ".playtest.json", {"databases": {"main": {"driver": "sqlite", "path": path}}})
+        self.write_json(self.root / ".test-plays/config.json", {"databases": {"main": {"driver": "sqlite", "path": path}}})
 
     def test_scaffold_catalog_inspect_and_run(self):
         result = dispatch({"action": "scaffold", "repoRoot": str(self.root), "name": "new-demo"})
@@ -175,7 +175,7 @@ class EngineTests(unittest.TestCase):
         result, events = self.run_play(runId="setup-failure")
         self.assertFalse(result["ok"])
         self.assertEqual(result["cleanup"], "completed")
-        conn = sqlite3.connect(self.root / ".playtest/runs/setup-failure/db.sqlite")
+        conn = sqlite3.connect(self.root / ".test-plays/runs/setup-failure/db.sqlite")
         self.assertEqual(conn.execute("SELECT value FROM sample").fetchone()[0], "cleaned")
         conn.close()
         self.assertFalse(any(e["type"] == "step_started" and e.get("phase") == "play" for e in events))
@@ -211,9 +211,26 @@ class EngineTests(unittest.TestCase):
         result = events[-1]["result"]
         self.assertEqual(result["execution"], "cancelled")
         self.assertEqual(result["cleanup"], "completed")
-        conn = sqlite3.connect(self.root / ".playtest/runs/cancel-test/db.sqlite")
+        conn = sqlite3.connect(self.root / ".test-plays/runs/cancel-test/db.sqlite")
         self.assertEqual(conn.execute("SELECT value FROM sample").fetchall(), [("cleaned",)])
         conn.close()
+
+    def test_dbwait_without_expect_waits_for_the_row_only_when_it_extracts(self):
+        self.write_json(self.root / ".test-plays/config.json",
+                        {"databases": {"main": {"driver": "sqlite", "path": "${runDir}/db.sqlite"}}})
+        self.assets([
+            {"stepNo": 1, "type": "dbWait", "database": "main", "readOnly": True,
+             "sql": "SELECT n FROM t WHERE n=5", "timeoutSeconds": 1, "intervalSeconds": 0.2},
+            {"stepNo": 2, "type": "dbWait", "database": "main", "readOnly": True,
+             "sql": "SELECT 1 AS one", "extract": {"one": "one"},
+             "timeoutSeconds": 1, "intervalSeconds": 0.2}],
+            scenario={"setup": [{"stepNo": 1, "type": "dbQuery", "database": "main",
+                                 "sql": "CREATE TABLE t(n INTEGER)"}], "cleanup": [], "mocks": []})
+        issues = dispatch(self.command("inspect"))["issues"]
+        waits = [i for i in issues if i["code"] == "db_wait_expect"]
+        self.assertEqual(len(waits), 1, issues)
+        self.assertIn("extract", waits[0]["message"],
+                      "waiting for the row itself is legitimate; a bare wait is not")
 
     def test_mock_request_counts_match_and_fail(self):
         self.assets([
@@ -241,7 +258,7 @@ class EngineTests(unittest.TestCase):
         self.assets([self.http_step(expect={"status": 201})], self.mocks())
         with self.assertRaisesRegex(EngineError, "changed since inspect"):
             dispatch(self.command("run", expectedDigest=inspection["digest"], runId="stale"))
-        self.assertFalse((self.root / ".playtest/runs/stale").exists())
+        self.assertFalse((self.root / ".test-plays/runs/stale").exists())
 
     def test_referenced_sql_file_is_snapshotted_and_digest_checked(self):
         self.sqlite_config()
@@ -249,7 +266,7 @@ class EngineTests(unittest.TestCase):
         self.assets([{"stepNo": 1, "type": "dbQuery", "sql": "SELECT COUNT(*) AS n FROM sample", "expect": {"n": 0}}],
                     {"setup": [{"stepNo": 1, "type": "dbQuery", "sqlFile": "create.sql"}]})
         inspected = dispatch(self.command("inspect"))
-        self.assertIn("test-plays/demo/create.sql", inspected["snapshot"]["assets"])
+        self.assertIn(".test-plays/demo/create.sql", inspected["snapshot"]["assets"])
         (self.directory / "create.sql").write_text("CREATE TABLE sample(n, other)")
         with self.assertRaises(EngineError):
             dispatch(self.command("run", expectedDigest=inspected["digest"]))
@@ -341,7 +358,7 @@ class EngineTests(unittest.TestCase):
 
     def test_multiple_plays_have_distinct_phases_and_one_run(self):
         self.assets([self.http_step()], self.mocks())
-        second = self.root / "test-plays" / "second"
+        second = self.root / ".test-plays" / "second"
         self.write_json(second / "play.json", {"version": 1, "scenarioName": "second", "steps": [self.http_step()]})
         self.write_json(second / "scenario.json", self.mocks())
         result, _ = self.run_play(play=None, plays=["demo", "second"])

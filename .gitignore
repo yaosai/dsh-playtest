@@ -17,5 +17,6 @@ venv/
 dist/
 *.tgz
 
-# Playtest 运行产物（本地证据，不入库）
-**/.playtest/runs/
+# Playtest 运行产物由 .test-plays/.gitignore 自行排除；这里兜底防误提交
+**/.test-plays/runs/
+**/.test-plays/cache/
