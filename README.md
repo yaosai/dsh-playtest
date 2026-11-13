@@ -261,6 +261,16 @@ JSON
 - **同源才发**：只有当这一步**实际请求的 URL**（含步骤写死的绝对 URL）与 target 的 `baseUrl` 同源于同一 `scheme://host:port` 时才附加；指向自己 mock 的步骤、或写别的主机的绝对 URL，**拿不到这个凭据**。移除该守卫时测试会失败（不是空过的断言）。
 - **`Host` / `Content-Length` / `Connection` / `Transfer-Encoding` / `Expect` 被拒绝**：那些由传输层拥有，写进来只会让资产看着合法、发出去坏掉。
 
+## 每轮唯一的短标识：`${runShort}`
+
+真实库的列宽会咬人：`bill_code` 只有 19 字，32 位 runId 塞不进去（SQL Server 直接 `String or binary data would be truncated`）。所以除 `${runId}`/`${runDir}` 外，播放器还提供 **`${runShort}`**：runId 去掉分隔符后的**末尾 12 位**。取尾部是因为引擎自生成的 id 形如 `20261113T183202-abcdef123459`——头部是时间戳，同几分钟内会重复。
+
+`runId`、`runShort`、`runDir`、`mock` 都是保留名，场景变量不得覆盖。
+
+## 交接的会话开在"当前工作区"，不是仓库目录
+
+`session.create({cwd})` 里 `cwd` 决定会话归属哪个工作区。若传被测仓库路径，宿主会为它**新开一个工作区分组**，用户在原来的列表里就找不到那条会话。所以视图先问一次 `{action:"workspace"}`（返回 `env.policy.workspaceRoot`），把会话开在**用户正在看的工作区**，仓库路径写在提示词正文里；问不到才退回仓库。
+
 ## 场景与目标用下拉选，不用打字
 
 `catalog` 返回每个剧本的场景文件列表、它自己声明的默认场景（`play.json` 的 `"scenario"`），以及仓库 `.test-plays/config.json` 里声明的目标名。界面据此渲染两个下拉框：

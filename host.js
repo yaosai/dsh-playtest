@@ -300,6 +300,11 @@ export class PlaytestOperations {
           const value = this.invoke(env, { action: 'catalog' });
           return value.then(item => ({ ...item, demoRepo: env.fs.processPathFromHostPath(join(HERE, 'examples', 'demo-project')) }));
         }
+        case 'workspace':
+          // The handoff must land in the workspace the human is looking at: creating a
+          // session with the repository as its own directory opens a separate workspace
+          // bucket, and the session then appears nowhere the user was told to look.
+          return { ok: true, workspaceRoot: env.policy.workspaceRoot, repoRoot: env.target };
         case 'repos': {
           const value = this.invoke(env, { action: 'repos' });
           return value.then(item => ({ ...item, demoRepo: env.fs.processPathFromHostPath(join(HERE, 'examples', 'demo-project')) }));

@@ -331,6 +331,29 @@ class EngineTests(unittest.TestCase):
         received = result["steps"][1]["evidence"]["data"]["requests"][0]["evidence"]["data"]["headers"]
         self.assertNotIn("Authorization", {str(k) for k in received}, "the mock server logged the credential")
 
+    def test_run_short_is_available_and_narrow(self):
+        """Real columns are short: an nvarchar(19) bill cannot carry a 32-hex runId, so the
+        player exposes a 12-character tail that stays unique per run."""
+        step = {"stepNo": 1, "name": "Echo", "type": "http", "method": "POST", "path": "${mock.api.url}/go",
+                "body": {"bill_code": "BC-${runShort}"}, "expect": {"status": 200}}
+        self.assets([step], self.mocks([{"method": "POST", "path": "/go", "status": 200, "body": {"ok": True}}]))
+        first = self.run_play()[0]
+        token = first["steps"][0]["evidence"]["data"]["request"]["body"]["bill_code"]
+        self.assertRegex(token, r"^BC-[0-9a-z]{12}$", token)
+        self.assertLessEqual(len(token), 19, "must fit an nvarchar(19) column")
+        second = dispatch(self.command("run", runId="20261113T183202-abcdef123459"))
+        other = second["steps"][0]["evidence"]["data"]["request"]["body"]["bill_code"]
+        self.assertNotEqual(token, other, "two runs must not reuse the same bill number")
+        self.write_json(self.directory / "scenario.json", {"variables": {"runShort": "fixed"}, "setup": [],
+                                                            **self.mocks([{"method": "POST", "path": "/go",
+                                                                           "status": 200, "body": {"ok": True}}])})
+        try:   # dispatch turns the EngineError into a refusal; some paths raise instead
+            refused = dispatch(self.command("run"))
+            self.assertFalse(refused["ok"])
+            self.assertIn("reserved", json.dumps(refused, ensure_ascii=False))
+        except Exception as exc:
+            self.assertIn("reserved", str(exc))   # runShort is reserved like runId and runDir
+
     def test_target_headers_reach_the_request(self):
         """Authentication declared once per target must actually be sent, and a step must
         still be able to override it — that is the whole reason it lives on the target."""

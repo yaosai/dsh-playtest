@@ -152,6 +152,7 @@ function loadView(source, extras = {}) {
 
 // Data shaped like the migrated demo-biz-repo assets, through the plugin's own tool contract.
 const REPO = '/work/demo-biz-repo';
+const WORKSPACE = '/work/demo-workspace';   // the session's own workspace root, ≠ the repository
 const FIXTURES = {
   repos: { ok: true, root: '/work', repositories: [{ path: REPO, relative: 'demo-biz-repo', name: 'demo-biz-repo', plays: 1 }],
     demoRepo: '/work/dsh-playtest/examples/demo-project' },
@@ -479,6 +480,8 @@ test('the one sentence also opens an agent session that receives the goal', asyn
     }
   });
   const fixtures = JSON.parse(JSON.stringify(FIXTURES));
+  fixtures.workspace = { ok: true, workspaceRoot: WORKSPACE, repoRoot: REPO };
+  fixtures.workspace = { ok: true, workspaceRoot: WORKSPACE, repoRoot: REPO };
   const request = async (sessionId, payload) => {
     if (payload.action === 'create') {
       fixtures.catalog.plays.push({ slug: 'guard-play', name: payload.title, description: '', mode: 'explore', steps: 0, scenarios: [] });
@@ -499,7 +502,8 @@ test('the one sentence also opens an agent session that receives the goal', asyn
   assert.equal(created.length, 1, 'exactly one session was created');
   // Field-by-field: the view builds payloads inside the vm realm, so prototype-sensitive
   // deepEqual would fail on a value that is actually right.
-  assert.equal(created[0].request.cwd, REPO, 'the new session owns the repository under test');
+  assert.equal(created[0].request.cwd, WORKSPACE,
+    'the session opens in the workspace the user is looking at, not in a new bucket per repository');
   assert.deepEqual(Object.keys(created[0].request), ['cwd'], 'and nothing else is claimed about it');
   assert.equal(prompted.length, 1, 'the goal was handed over');
   const body = prompted[0].request;
@@ -510,7 +514,10 @@ test('the one sentence also opens an agent session that receives the goal', asyn
   assert.ok(body.content[0].text.includes(`${REPO}/.test-plays/guard-play`), 'and which play to fill in');
   assert.match(body.content[0].text, /不要猜|do not guess/, 'the handoff carries the no-guessing constraint');
   assert.match(body.content[0].text, /不要自行发起会打到真实系统的播放|do not start a run that/, 'and the no-self-play rule');
-  assert.match(collect(tree, []).join(' '), /已创建 guard-play，并另起会话/, 'the view says where it went');
+  const said = collect(tree, []).join(' ');
+  assert.match(said, /已创建 guard-play/, 'the view confirms the play');
+  assert.match(said, new RegExp('当前工作区（' + WORKSPACE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '）'),
+    'and says which workspace the session landed in');
 });
 
 test('a build without the session namespace still creates and states the next step', async () => {
@@ -706,7 +713,7 @@ test('a failed run hands its evidence over, with rules against making it green',
   assert.match(text, /把预期改成实际值/);
   assert.match(text, /不要自己发起会打到真实系统的播放/, 'and leaving the replay click to the user');
   assert.match(text, /剧本或断言写错|环境或夹具|真实业务缺陷/, 'offering exactly three causes to choose between');
-  assert.match(collect(tree, []).join(' '), /已把这次失败交给新会话分析/, 'the view confirms where it went');
+  assert.match(collect(tree, []).join(' '), /已把这次失败交给当前工作区/, 'the view names the workspace it landed in');
 });
 
 test('a bare translator reference inside a module-scope helper is caught', async () => {

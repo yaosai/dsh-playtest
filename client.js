@@ -32,7 +32,7 @@ window.__ModuleLoader__.load({
       createTitle: 'What do you want to verify?', createExample: 'e.g. after a station goes offline it must stop accepting bills',
       createHelp: 'The directory name and target are worked out from this repository; a new agent session writes the steps and assertions from what the code actually does.',
       analyzeRun: 'Let an agent analyse this failure', noStepFailed: 'no step reported a failure, yet the verdict is not passed',
-      analyzing: 'Handed this failure to a new session ({sessionId}) — it is in the same workspace list.',
+      analyzing: 'This failure is now with a new session ({sessionId}) in this workspace ({workspace}).',
       agentAnalyze: 'Use the Playtest plugin to analyse this failed run and improve the play.\n'
         + 'Repository: {repo}\nRun: {runId} (play {play}; verdict {verdict}, execution {execution}, cleanup {cleanup})\n'
         + 'Evidence directory: {runDir}\nSteps that did not pass: {failures}\n\n'
@@ -114,7 +114,7 @@ window.__ModuleLoader__.load({
       createTitle: '你要验证什么？', createExample: '例：工作站下线后不应继续接单',
       createHelp: '目录名和目标由本仓库推出来；创建后会自动另起一个 agent 会话，由它读代码写步骤与断言——不会替你猜业务规则。',
       analyzeRun: '让 agent 分析这次失败', noStepFailed: '步骤里没有失败项，但整体结论不是通过',
-      analyzing: '已把这次失败交给新会话分析（会话 {sessionId}），在同一工作区列表里可以看到。',
+      analyzing: '已把这次失败交给当前工作区（{workspace}）的新会话 {sessionId} 分析。',
       agentAnalyze: '用 Playtest 分析这次失败的播放，并把剧本改对。\n'
         + '仓库：{repo}\n运行：{runId}（剧本 {play}；结论 {verdict}／执行 {execution}／清理 {cleanup}）\n'
         + '证据目录：{runDir}\n未通过的步骤：{failures}\n\n'
@@ -130,7 +130,7 @@ window.__ModuleLoader__.load({
         + '约束：先读代码与接口契约确认真实路径、参数和字段，不要猜；只写你能证明的断言，依据写进 claims[].basis 或 NOTES.md；'
         + '业务口径未确认时保持 mode: explore 并记下缺口；写完用 playtest_lint 与 inspect 自查；'
         + '不要自行发起会打到真实系统的播放，那一下归用户点。',
-      handedOff: '已创建 {slug}，并另起会话把目标交给了 agent；新会话在同一工作区列表里。',
+      handedOff: '已创建 {slug}，并在当前工作区（{workspace}）另起会话处理目标。',
       handedOffFailed: '{slug} 的骨架已建好，但没能自动交给 agent（骨架没有丢）：',
       handoffUnavailable: '让 agent 说一句「把这个剧本补成可播放的测试」即可继续。',
       createSubmit: '创建', cancelForm: '取消', formRequired: '先说一句要验证什么。',
@@ -335,7 +335,10 @@ window.__ModuleLoader__.load({
     function createHandoff(session) {
       if (!session || typeof session.create !== 'function' || typeof session.prompt !== 'function') return null;
       return async function handoff(goal, signal) {
-        const created = await callRemote(session, 'create', { cwd: goal.repoRoot }, signal);
+        // Prefer the current workspace root so the new session is visible where the user is;
+        // fall back to the repository when the host does not report one.
+        const cwd = goal.workspaceRoot || goal.repoRoot;
+        const created = await callRemote(session, 'create', { cwd }, signal);
         if (created && created.ok === false) throw new Error(created.error && (created.error.message || String(created.error)) || 'session create failed');
         const target = (created && created.value) || created || {};
         if (!target.sessionId) throw new Error('session create returned no sessionId');
@@ -392,6 +395,9 @@ window.__ModuleLoader__.load({
       const [tab, setTab] = React.useState('work');
       const [tip, setTip] = React.useState(null);
       const [form, setForm] = React.useState(null);
+      // Remembered in a ref: the workspace root is a fact about this session, not about the
+      // selected repository, so it is fetched once and reused by every handoff.
+      const workspaceRoot = React.useRef('');
       const mounted = React.useRef(true);
       const pending = React.useRef(new Set());
       const epoch = React.useRef(0);
@@ -526,6 +532,14 @@ window.__ModuleLoader__.load({
       };
       // Creating assets is a file write: the Host blocks it when the session is read-only
       // or the repository escapes the workspace, and that error surfaces as a notice.
+      const ensureWorkspace = async () => {
+        if (workspaceRoot.current) return workspaceRoot.current;
+        try {
+          const info = await call('workspace', {});
+          if (info && info.ok === true && typeof info.workspaceRoot === 'string') workspaceRoot.current = info.workspaceRoot;
+        } catch (_) { /* optional: fall back to the repository directory */ }
+        return workspaceRoot.current;
+      };
       const draftPlay = () => perform('draft', async () => {
         // Nothing to type: the played slug and title already describe this run.
         const data = await call('draft', { ...options(), runId });
@@ -551,8 +565,11 @@ window.__ModuleLoader__.load({
               + ' → ' + step.status + (step.error ? '：' + step.error : '')).join(';')
             : t('noStepFailed')
         });
-        const sessionId = await handoff({ repoRoot: options().repoRoot, text });
-        if (mounted.current) setMessage({ error: false, text: t('analyzing', { sessionId }) });
+        await ensureWorkspace();
+        const sessionId = await handoff({ repoRoot: options().repoRoot, workspaceRoot: workspaceRoot.current, text });
+        if (mounted.current) {
+          setMessage({ error: false, text: t('analyzing', { sessionId, workspace: workspaceRoot.current || options().repoRoot }) });
+        }
       });
       const createForm = () => setForm({ mode: 'create', title: '' });
       const patchForm = updates => setForm(old => (old ? { ...old, ...updates } : old));
@@ -571,8 +588,10 @@ window.__ModuleLoader__.load({
           return;
         }
         try {
-          await handoff({ repoRoot: options().repoRoot, text: t('agentGoal', { repo: options().repoRoot, path: data.path, intent: title }) });
-          setMessage({ error: false, text: t('handedOff', { slug: data.slug }) });
+          await ensureWorkspace();
+          await handoff({ repoRoot: options().repoRoot, workspaceRoot: workspaceRoot.current,
+            text: t('agentGoal', { repo: options().repoRoot, path: data.path, intent: title }) });
+          setMessage({ error: false, text: t('handedOff', { slug: data.slug, workspace: workspaceRoot.current || options().repoRoot }) });
         } catch (error) {
           // The skeleton is already on disk: report the half-step instead of losing it.
           setMessage({ error: true, text: t('handedOffFailed', { slug: data.slug }) + ' ' + (error.message || String(error)) });

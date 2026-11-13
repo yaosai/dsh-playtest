@@ -165,6 +165,14 @@ test('every Remote namespace the view touches is declared in inject',()=>{
   const missing=[...used].filter(ns=>!declared.includes(`'${ns}'`));
   assert.deepEqual(missing,[],'undeclared Remote namespaces would blank the view');
 });
+test('the workspace action reports the session workspace, not the repository',()=>{
+  const source=readFileSync(new URL('../host.js',import.meta.url),'utf8');
+  assert.match(source,/case 'workspace':/,'the view can ask where to open a handoff session');
+  assert.match(source,/workspaceRoot: env\.policy\.workspaceRoot/,'it reports the session workspace root');
+  const client=readFileSync(new URL('../client.js',import.meta.url),'utf8');
+  assert.match(client,/const cwd = goal\.workspaceRoot \|\| goal\.repoRoot;/,'and the handoff prefers it over the repository');
+  assert.match(client,/await ensureWorkspace\(\);/,'it is fetched before any session is created');
+});
 test('creating a play asks one question and saving a run asks none',()=>{
   const source=readFileSync(new URL('../client.js',import.meta.url),'utf8');
   assert.match(source,/button\(t\('newPlay'\), createForm/,'the toolbar offers a new-play entry');

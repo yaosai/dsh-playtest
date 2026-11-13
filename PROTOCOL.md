@@ -8,6 +8,10 @@
 - `<repo>/.test-plays/config.json`（可选）：targets {name:{baseUrl,description}}、databases {name:{driver:'sqlite',path:'相对仓库路径'}}。不默认某个项目的接口名、端口、框架健康路径或某个旧 skill。
 - 运行资产 `<repo>/.test-plays/runs/<runId>/`：snapshot.json、events.jsonl、result.json。剧本本身不回写。
 
+## 保留变量
+
+`${runId}`、`${runShort}`（runId 尾部 12 位字母数字，用于窄列）、`${runDir}`、`${mock.<id>.url}` 由播放器提供；场景变量不得覆盖前三个——覆盖会在装载期直接失败。
+
 ## 阶段
 
 一次播放固定：`prepare`（项目声明的只读就绪检查）→ `setup`（场景数据准备）→ `play`（业务步骤）→ `cleanup`（收尾）。
@@ -37,9 +41,11 @@
 
 ## 交给 agent（视图 → 新会话）
 
+会话落点：视图先调用 `{action:"workspace"}` → `{ ok, workspaceRoot, repoRoot }`，用 **`workspaceRoot`** 作为 `session.create` 的 `cwd`（问不到才退回 repoRoot）。原因：`cwd` 决定会话归属的工作区，传仓库路径会让它出现在另一个工作区分组里，用户在当前列表看不到。`workspace` 是只读动作，不写证据、不判写入权限。
+
 「创建」在骨架写完后调用同一对被 GUI 使用的 Remote 能力,不新增注入依赖(来自已注入的 `@deepseek-ai/dsh-api-remotes`):
 
-- `session.create({ cwd })` → `{ sessionId }`（响应可能包在 `RemoteResult` 里,两种形状都要接）
+- `session.create({ cwd })` → `{ sessionId }`（`cwd` 取当前工作区根，见上）（响应可能包在 `RemoteResult` 里,两种形状都要接）
 - `session.prompt({ requestId, sessionId, mode: "queue", content: [{type:"text", text}] }, signal)` → `{ accepted: true }`
 
 **参数个数按对方面函数的声明取,不要照 Host 签名硬写。** 生成面里 `create` 只收 1 个参数、`prompt` 收 2 个;照 `(request, signal)` 统一调用会被网关拒:
