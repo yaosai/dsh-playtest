@@ -550,6 +550,50 @@ def cleanup_budget(play, scenario):
     return float(CLEANUP_SECONDS)
 
 
+# Headers the transport owns: accepting them here would produce requests that look
+# valid in the asset but fail or misroute on the wire.
+RESERVED_TARGET_HEADERS = ("host", "content-length", "connection", "transfer-encoding", "expect")
+
+
+def target_headers(config, target):
+    """Authentication and other environment-level headers, declared once per target.
+
+    A token belongs to "which service am I talking to", not to each test's data: keeping it
+    in the target means three scenarios of one play cannot drift apart or leak it into play
+    files. Step-level headers still win, so a test can override or add its own.
+    """
+    spec = config.get("targets", {}).get(target) if isinstance(target, str) else None
+    declared = (spec or {}).get("headers") if isinstance(spec, dict) else None
+    if declared is None:
+        return {}
+    if not isinstance(declared, dict):
+        raise EngineError("Target " + str(target) + " headers must be an object", "invalid_target_header")
+    merged = {}
+    for name, value in declared.items():
+        if str(name).lower() in RESERVED_TARGET_HEADERS:
+            raise EngineError("Target header " + str(name) + " is owned by the transport", "invalid_target_header")
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            raise EngineError("Target header " + str(name) + " must be a scalar", "invalid_target_header")
+        merged[str(name)] = value
+    return merged
+
+
+def origin_of(url):
+    """scheme://host:port of a URL, or None when it is not an absolute URL."""
+    match = re.match(r"^(https?://[^/?#]+)", str(url or ""), re.I)
+    return match.group(1).rstrip("/").lower() if match else None
+
+
+def merge_headers(step, declared):
+    """Environment headers first, the step's own value on top."""
+    if not declared:
+        return step.get("headers") or {}
+    step_headers = step.get("headers") or {}
+    if not isinstance(step_headers, dict):
+        return declared
+    return {**declared, **step_headers}
+
+
 def resolve_prepare(root, config, steps, config_path):
     """Copy project preparation checks and resolve each target name to its base URL."""
     resolved = []
@@ -564,6 +608,7 @@ def resolve_prepare(root, config, steps, config_path):
             if not isinstance(spec, dict) or not isinstance(spec.get("baseUrl"), str):
                 raise EngineError("Unknown or invalid prepare target: " + str(target), "unknown_target")
             copy["baseUrl"] = spec["baseUrl"]
+            copy["headers"] = merge_headers(copy, target_headers(config, target))
         resolved.append(copy)
     return resolved
 
@@ -731,6 +776,20 @@ def compile_request(request, discover=False):
                         issues.append(issue("error", "http_target", "HTTP path needs explicit target/baseUrl or a mock URL", path))
                     if not own_mock:
                         effects.append({"kind": "http", "code": "http.external", "play": slug, "phase": phase, "stepNo": step.get("stepNo"), "target": step.get("target") or target or step_base or url, "description": "HTTP request to a non-owned service", "requiresConfirmation": True})
+                    # Credentials only travel to the origin they belong to: a step with its own
+                    # absolute URL, or one pointed at its own mock, must not pick up the target's
+                    # Authorization token.
+                    step_target = step.get("target") or target
+                    # A step's own absolute URL wins over the base, so compare against the URL
+                    # that will actually be requested, not just the configured base.
+                    effective = url if str(url).startswith(("http://", "https://")) else (
+                        (str(step_base).rstrip("/") + url) if step_base and str(url).startswith("/") else step_base)
+                    if not own_mock and step_target and effective:
+                        declared_base = (config.get("targets", {}).get(step_target) or {}).get("baseUrl")
+                        if origin_of(effective) == origin_of(declared_base):
+                            declared_headers = target_headers(config, step_target)
+                            if declared_headers:
+                                step["headers"] = merge_headers(step, declared_headers)
                 elif kind in ("dbQuery", "dbWait"):
                     name = step.get("database", "main")
                     database = config.get("databases", {}).get(name)

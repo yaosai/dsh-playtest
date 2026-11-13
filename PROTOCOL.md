@@ -51,6 +51,10 @@
 
 界面在运行结论非 passed 时提供交接，`session.prompt` 的正文必须携带：`runId`、剧本名、`verdict/execution/cleanup` 三元组、`artifacts.runDir`、未通过步骤（阶段、步号、名称、状态、断言消息）。措辞由界面 locale 提供，插件不解释失败原因本身——归因是 agent 的工作，且必须限定在「剧本错 / 环境夹具不满足 / 真实业务缺陷」三类之一，禁止以放宽断言换取通过。
 
+## target 级 headers（1.13.2）
+
+`targets.<name>.headers` 是对象，值为标量；编译时合并进每个 HTTP 步骤的 `headers`（步骤同名键覆盖）。合并的前置条件：该步不是指向自己 mock 的 `${mock.x.url}`，且**实际请求 URL** 的 `scheme://host:port` 与 target `baseUrl` 一致——凭据不跨源。保留头 `host` / `content-length` / `connection` / `transfer-encoding` / `expect` 与非标量值都在 lint/preview 阶段报 `invalid_target_header`。
+
 ## 目录（catalog）给选择器的字段
 
 `catalog` 每个剧本除 `slug/name/description/mode/steps/scenarios` 外还带 `defaultScenario`（取 `play.json` 的 `scenario` 字段，缺省 `scenario.json`）；顶层带 `targets`（`.test-plays/config.json` 中 `targets` 的键名，已排序）。这些只服务界面下拉框，不参与摘要计算。

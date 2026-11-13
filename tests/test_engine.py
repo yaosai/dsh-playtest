@@ -314,6 +314,75 @@ class EngineTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
+    def test_target_credentials_never_follow_a_step_into_its_own_mock(self):
+        """A mock endpoint is not the target service: sending the declared Authorization there
+        would leak the credential into a request the test itself is serving."""
+        self.write_json(self.root / ".test-plays/config.json", {"targets": {"api": {
+            "baseUrl": "http://127.0.0.1:9", "headers": {"Authorization": "Bearer SECRET-TOKEN"}}}})
+        step = {"stepNo": 1, "name": "Call own mock", "type": "http", "method": "GET",
+                "path": "${mock.api.url}/ok", "expect": {"status": 200, "json": {"$.n": 7}}}
+        verify = {"stepNo": 2, "name": "What the mock actually received", "type": "mockVerify",
+                  "mock": "api", "path": "/ok", "method": "GET", "count": 1}
+        self.assets([step, verify], scenario=dict(self.mocks(), setup=[], cleanup=[]), extra={"target": "api"})
+        result, _ = self.run_play()
+        self.assertEqual([entry["status"] for entry in result["steps"]], ["passed", "passed"], result["steps"])
+        sent = result["steps"][0]["evidence"]["data"]["request"]["headers"]
+        self.assertNotIn("Authorization", sent, "the player sent the target token to its own mock")
+        received = result["steps"][1]["evidence"]["data"]["requests"][0]["evidence"]["data"]["headers"]
+        self.assertNotIn("Authorization", {str(k) for k in received}, "the mock server logged the credential")
+
+    def test_target_headers_reach_the_request(self):
+        """Authentication declared once per target must actually be sent, and a step must
+        still be able to override it — that is the whole reason it lives on the target."""
+        received = {}
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.clear()
+                received.update({str(key).lower(): value for key, value in self.headers.items()})
+                payload = b'{"echo": true}'
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        base = "http://127.0.0.1:" + str(server.server_port)
+        step = {"stepNo": 1, "name": "Call", "type": "http", "method": "POST", "path": "/call",
+                "target": "api", "expect": {"status": 200, "json": {"$.echo": True}}}
+        try:
+            self.write_json(self.root / ".test-plays/config.json", {"targets": {"api": {
+                "baseUrl": base, "headers": {"Authorization": "Bearer TARGET", "X-Env": "itest"}}}})
+            self.assets([dict(step)], extra={"target": "api"})
+            result, _ = self.run_play(allowEffects=True)
+            self.assertEqual(result["steps"][0]["status"], "passed", result["steps"][0])
+            self.assertEqual(received.get("authorization"), "Bearer TARGET", "the target's token was not sent")
+            self.assertEqual(received.get("x-env"), "itest")
+
+            overriding = dict(step, headers={"Authorization": "Bearer STEP"})
+            self.assets([overriding], extra={"target": "api"})
+            result, _ = self.run_play(allowEffects=True)
+            self.assertEqual(result["steps"][0]["status"], "passed")
+            self.assertEqual(received.get("authorization"), "Bearer STEP", "the step's own header must win")
+
+            self.write_json(self.root / ".test-plays/config.json", {"targets": {"api": {
+                "baseUrl": base, "headers": {"Host": "elsewhere"}}}})
+            self.assets([dict(step)], extra={"target": "api"})
+            self.assertFalse(dispatch(self.command("lint"))["ok"], "the transport owns Host")
+            self.write_json(self.root / ".test-plays/config.json", {"targets": {"api": {
+                "baseUrl": base, "headers": {"X-List": ["a"]}}}})
+            self.assertFalse(dispatch(self.command("lint"))["ok"], "headers must be scalars")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_non_run_database_write_requires_confirmation(self):
         self.sqlite_config("shared.sqlite")
         self.assets([{"stepNo": 1, "type": "dbQuery", "sql": "CREATE TABLE sample(n)"}])

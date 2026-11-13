@@ -253,6 +253,14 @@ JSON
 
 通过的运行不提供这个按钮——没有失败可分析；想让 agent 从一次成功里沉淀基线，用的是「把这次运行存为剧本」。
 
+## 鉴权头属于 target，不属于剧本
+
+真实系统往往要求 `Authorization` 之类的头。它回答的是"我在跟哪个服务说话"，所以声明在 `targets.<name>.headers`，一次声明、所有剧本与场景共享，凭据不会散落在测试资产里。三条规则：
+
+- **步骤自己的头优先**：`step.headers` 覆盖同名 target 头，临时换令牌不用动配置。
+- **同源才发**：只有当这一步**实际请求的 URL**（含步骤写死的绝对 URL）与 target 的 `baseUrl` 同源于同一 `scheme://host:port` 时才附加；指向自己 mock 的步骤、或写别的主机的绝对 URL，**拿不到这个凭据**。移除该守卫时测试会失败（不是空过的断言）。
+- **`Host` / `Content-Length` / `Connection` / `Transfer-Encoding` / `Expect` 被拒绝**：那些由传输层拥有，写进来只会让资产看着合法、发出去坏掉。
+
 ## 场景与目标用下拉选，不用打字
 
 `catalog` 返回每个剧本的场景文件列表、它自己声明的默认场景（`play.json` 的 `"scenario"`），以及仓库 `.test-plays/config.json` 里声明的目标名。界面据此渲染两个下拉框：
@@ -287,7 +295,7 @@ JSON
 
 ```json
 {
-  "targets": { "local": { "baseUrl": "http://localhost:8080" } },
+  "targets": { "local": { "baseUrl": "http://localhost:8080", "headers": { "Authorization": "Bearer <项目自己的开发令牌>" } } },
   "databases": { "main": { "driver": "command", "argv": ["python3", "tools/playtest-db/adapter.py"], "expectedTarget": {"host":"127.0.0.1","port":1433,"database":"your-db"}, "assetFiles": ["tools/playtest-db/adapter.py"] } },
   "prepare": [
     { "stepNo": 1, "name": "业务服务在线", "type": "http", "target": "local", "method": "GET", "path": "/health/check", "expect": { "status": 200 } },
