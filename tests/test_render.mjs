@@ -676,7 +676,7 @@ test('a failed run hands its evidence over, with rules against making it green',
   failed.steps = [
     { phase: 'play', play: 'station-lifecycle', stepNo: 1, name: '停止接单', status: 'passed' },
     { phase: 'play', play: 'station-lifecycle', stepNo: 2, name: '恢复接单', status: 'failed',
-      error: '期望 $.success=true，实际 false' }
+      error: 'assertion mismatch: http.status expected 200, actual 401' }
   ];
   tree = await openRun(failed);
   const button = findButton(tree, '让 agent 分析这次失败');
@@ -699,7 +699,8 @@ test('a failed run hands its evidence over, with rules against making it green',
   const text = prompted[0].content[0].text;
   assert.match(text, /20261111T034212-b4fa63aa46fe/, 'the runId is handed over, not just a complaint');
   assert.match(text, /恢复接单.*failed/s, 'and which step broke');
-  assert.match(text, /期望 \$\.success=true，实际 false/, 'with the assertion message itself');
+  assert.match(text, /http\.status expected 200, actual 401/, 'with the mismatch itself, not a bare "failed"');
+  assert.match(collect(tree, []).join(' '), /actual 401/, 'and the reason is rendered on the step row too');
   assert.match(text, /\.test-plays\/runs\//, 'pointing at the evidence directory');
   assert.match(text, /放宽或删除断言/, 'naming the temptation it must resist');
   assert.match(text, /把预期改成实际值/);

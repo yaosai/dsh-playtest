@@ -365,12 +365,37 @@ class Runner:
         assertion_id = record["id"] + ":" + str(record["assertionCount"] + 1)
         item = {"id": assertion_id, "play": self.item["slug"], "stepId": record["id"],
                 "phase": record["phase"], "check": check,
+                # Which embedded check (if any) produced this: without it a failing column
+                # is indistinguishable from the action's own expectation.
+                **({"ofCheck": record.get("currentCheck")} if record.get("currentCheck") else {}),
                 "expected": evidence(expected), "actual": evidence("<missing>" if actual is MISSING else actual),
                 "ok": ok, "status": "passed" if ok else "failed", "evidence": evidence(observation)}
         self.assertions.append(item)
         record["assertionCount"] += 1
         self.events.emit("assertion", assertion=item, play=self.item["slug"], stepId=record["id"])
         return ok
+
+    @staticmethod
+    def _brief(value, limit=90):
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        text = text.replace("\n", " ")
+        return text if len(text) <= limit else text[:limit - 1] + "…"
+
+    def mismatch_report(self, record):
+        """Name the assertions that actually broke, with expected and observed values.
+
+        "Explicit assertion mismatch" forces anyone reading the run — human or a follow-up
+        agent — to open the evidence blob to learn that the service replied 401.
+        """
+        broken = [item for item in self.assertions if item["stepId"] == record["id"] and not item["ok"]]
+        parts = []
+        for item in broken[:3]:
+            where = (item.get("ofCheck") + " ") if item.get("ofCheck") else ""
+            parts.append(where + str(item["check"]) + " expected " + self._brief(item["expected"].get("data"))
+                         + ", actual " + self._brief(item["actual"].get("data")))
+        if len(broken) > 3:
+            parts.append("(另有 " + str(len(broken) - 3) + " 项不匹配)")
+        return "assertion mismatch: " + "; ".join(parts) if parts else "Explicit assertion mismatch"
 
     def unit(self, record, step, kind):
         """Run one action or verification; assertions land on the owning step."""
@@ -454,6 +479,7 @@ class Runner:
                          "type": check.get("type"), "status": "observed", "assertionCount": 0}
                 before = record["assertionCount"]
                 started_check = time.monotonic()
+                record["currentCheck"] = entry["name"]
                 pending = None
                 try:
                     check_failures, check_observation = self.unit(record, check, check.get("type"))
@@ -471,8 +497,14 @@ class Runner:
                     failures |= check_failures
                     entry["status"] = ("failed" if check_failures
                                        else "passed" if record["assertionCount"] > before else "observed")
+                    if check_failures:
+                        # A check that merely disagreed used to carry no text at all: the run
+                        # said "failed" and the reason stayed buried in the assertions list.
+                        entry["error"] = self.mismatch_report(record)
                     entry["evidence"] = evidence(check_observation)
                 finally:
+                    # Internal marker only: it must never reach the returned step record.
+                    record.pop("currentCheck", None)
                     entry["assertionCount"] = record["assertionCount"] - before
                     entry["durationMs"] = round((time.monotonic() - started_check) * 1000)
                 record["checks"].append(entry)
@@ -486,7 +518,8 @@ class Runner:
             if check_error is not None:
                 raise check_error
             if failures:
-                raise AssertionFailed("Explicit assertion mismatch")
+                raise AssertionFailed(self.mismatch_report(record))
+
             record["status"] = "passed" if record["assertionCount"] else "observed"
         except RunCancelled:
             record.update(status="cancelled", ok=False, error="Run cancelled")

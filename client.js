@@ -203,7 +203,7 @@ window.__ModuleLoader__.load({
 .pt-choice input{margin:5px 0 0;accent-color:var(--dsw-alias-brand-primary)}.pt-choice-body{flex:1;min-width:0}.pt-choice-name{border:0;background:transparent;color:inherit;cursor:pointer;font:inherit;text-align:left;padding:0;width:100%;font-weight:500;overflow-wrap:anywhere}.pt-choice-name:hover{text-decoration:underline}.pt-choice p{margin:3px 0;font-size:12px;color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
 .pt-badge{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:1px 6px;font-size:11px;overflow-wrap:anywhere}.pt-badge[data-tone=good]{color:var(--dsw-alias-state-success-primary)}.pt-badge[data-tone=bad]{color:var(--dsw-alias-state-error-primary);font-weight:600}
 .pt-empty{margin:10px 0;color:var(--dsw-alias-label-secondary);font-size:13px}.pt-notice{border:1px solid var(--dsw-alias-border-l2);border-left:3px solid var(--dsw-alias-brand-primary);border-radius:8px;padding:10px 12px;margin:10px 0;overflow-wrap:anywhere}.pt-notice p{margin:0}.pt-notice strong{margin-right:6px}
-.pt-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.pt-preview-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.pt-checks{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12px}.pt-checks li{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}.pt-checks li[data-tone=bad] .pt-badge{color:var(--dsw-alias-state-error-primary)}
+.pt-options{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}.pt-preview-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}.pt-checks{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:12px}.pt-checks li{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}.pt-checks li[data-tone=bad] .pt-badge{color:var(--dsw-alias-state-error-primary)}.pt-step-error{color:var(--dsw-alias-state-error-primary);font-size:12px;margin-top:2px}
 .pt-table-wrap{overflow:auto;margin:8px 0}.pt-table{border-collapse:collapse;width:100%;font-size:12px;text-align:left}.pt-table th{color:var(--dsw-alias-label-secondary);font-weight:500}.pt-table td,.pt-table th{padding:7px 6px;border-bottom:1px solid var(--dsw-alias-border-l2);vertical-align:top;overflow-wrap:anywhere}.pt-table td:first-child{white-space:nowrap;width:48px}
 .pt-code{margin:8px 0;padding:10px;background:var(--dsw-alias-bg-layer-2);border-radius:8px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto}.pt-view details{margin:8px 0}.pt-view summary{cursor:pointer;color:var(--dsw-alias-label-secondary);font-size:12px}
 
@@ -270,6 +270,9 @@ window.__ModuleLoader__.load({
           h('td', null, step.stepNo == null ? index + 1 : step.stepNo),
           h('td', null, step.name || step.description || t('unknown'),
             step.phase ? h('div', { className: 'pt-muted' }, named(t, 'phase.', step.phase, asText(step.phase))) : null,
+            // The engine's mismatch text belongs on the row: buried in the evidence blob it
+            // reads as a bare "failed" and the reader cannot tell 401 from a wrong field.
+            results && step.error ? h('div', { className: 'pt-step-error' }, step.error) : null,
             checksOf(step).length ? h('ul', { className: 'pt-checks', 'aria-label': t('checks') },
               checksOf(step).map((check, position) => h('li', { key: position, 'data-tone': results ? toneOf(check.status) : 'neutral' },
                 results ? h(Badge, { value: check.status || 'observed', t }) : h('span', { className: 'pt-muted', 'aria-hidden': true }, '·'),

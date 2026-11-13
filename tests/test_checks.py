@@ -116,6 +116,27 @@ class EmbeddedCheckTests(unittest.TestCase):
         self.assertEqual(len(failed), 1)
         self.assertEqual(failed[0]["stepId"], step["id"], "the check assertion belongs to the action step")
 
+    def test_mismatch_message_names_the_broken_assertion_and_the_check(self):
+        """The step's error line has to say what broke: "Explicit assertion mismatch" sent
+        both a human and a follow-up agent back into the evidence blob to discover a 401."""
+        self.assets([
+            {"stepNo": 1, "name": "调用", "type": "http", "method": "POST",
+             "path": "${mock.api.url}/missing", "expect": {"status": 200},
+             "checks": [{"name": "行数应为 5", "type": "dbQuery", "database": "main", "readOnly": True,
+                         "sql": "SELECT COUNT(*) AS c FROM t", "expect": {"c": 5}}]}
+        ], self.api())
+        result, _ = self.run_play()
+        step = self.play_steps(result)[0]
+        self.assertEqual(step["status"], "failed")
+        self.assertIn("assertion mismatch", step["error"])
+        self.assertIn("http.status expected 200", step["error"])
+        self.assertIn("actual 404", step["error"], step["error"])
+        check = step["checks"][0]
+        self.assertEqual(check["status"], "failed")
+        self.assertIn("行数应为 5 c expected 5", check["error"], check["error"])
+        self.assertNotIn("currentCheck", step, "the internal marker must not leak into the record")
+        self.assertNotIn("currentCheck", json.dumps(result), "nor into anything returned")
+
     def test_check_error_is_distinguishable_from_a_failed_expectation(self):
         self.assets([
             {"stepNo": 1, "name": "写入", "type": "http", "method": "POST",

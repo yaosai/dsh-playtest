@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-playtest",
-  "version": "1.13.2",
+  "version": "1.13.3",
   "description": "Portable business test plays, scenarios and observable execution for DSH.",
   "private": true,
   "type": "module",
