@@ -71,6 +71,31 @@ class EmbeddedCheckTests(unittest.TestCase):
         self.assertEqual([c["status"] for c in step["checks"]], ["passed"])
         self.assertEqual(self.inspect()["preview"]["plays"][0]["steps"][0]["checks"][0]["name"], "行已存在")
 
+    def test_variables_resolve_inside_checks_and_a_missing_one_fails_loudly(self):
+        """A real play puts its bill number into both the request and the checks, so check
+        text must go through the same substitution — and a typo must fail the step instead of
+        quietly comparing against the literal "${...}"."""
+        self.write_json(self.directory / "play.json", {"version": 1, "scenarioName": "demo", "mode": "baseline",
+            "steps": [
+                {"stepNo": 1, "name": "按变量读回自己造的数", "type": "dbQuery", "database": "main", "readOnly": True,
+                 "sql": "SELECT n FROM t WHERE n = ${want}", "expect": {"n": "${want}"},
+                 "checks": [{"name": "变量也应替换进校验", "type": "dbQuery", "database": "main", "readOnly": True,
+                             "sql": "SELECT COUNT(*) AS c FROM t WHERE n = ${want}", "expect": {"c": 1}}]},
+                {"stepNo": 2, "name": "拼错的变量", "type": "dbQuery", "database": "main", "readOnly": True,
+                 "sql": "SELECT n FROM t WHERE n = ${noSuchVariable}", "expect": {"n": 1}}]})
+        self.write_json(self.directory / "scenario.json", {"variables": {"want": 42}, "setup": [
+            {"stepNo": 1, "type": "dbQuery", "database": "main", "sql": "CREATE TABLE t(n INTEGER)"},
+            {"stepNo": 2, "type": "dbQuery", "database": "main", "sql": "INSERT INTO t VALUES (42)"}],
+            "cleanup": [], "mocks": []})
+        result, _ = self.run_play()
+        steps = self.play_steps(result)
+        self.assertEqual(steps[0]["status"], "passed", steps[0])
+        self.assertEqual(steps[0]["assertionCount"], 2, "step expect and check both resolved the variable")
+        self.assertEqual(steps[0]["checks"][0]["status"], "passed")
+        self.assertNotIn("${want}", json.dumps(steps[0]["checks"][0]["evidence"]), "the SQL kept the placeholder")
+        self.assertEqual(steps[1]["status"], "failed", "an unresolvable variable must not pass silently")
+        self.assertEqual(steps[1]["errorCode"], "missing_variable")
+
     def test_failed_check_fails_the_action_step_and_stops_the_run(self):
         self.assets([
             {"stepNo": 1, "name": "写入", "type": "http", "method": "POST",
