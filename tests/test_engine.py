@@ -332,7 +332,7 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("Authorization", {str(k) for k in received}, "the mock server logged the credential")
 
     def test_run_short_is_available_and_narrow(self):
-        """Real columns are short: an nvarchar(19) bill cannot carry a 32-hex runId, so the
+        """Real columns are short: an nvarchar(19) column cannot carry a 32-hex runId, so the
         player exposes a 12-character tail that stays unique per run."""
         step = {"stepNo": 1, "name": "Echo", "type": "http", "method": "POST", "path": "${mock.api.url}/go",
                 "body": {"bill_code": "BC-${runShort}"}, "expect": {"status": 200}}

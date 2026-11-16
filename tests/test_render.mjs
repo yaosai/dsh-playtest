@@ -150,7 +150,7 @@ function loadView(source, extras = {}) {
     injectedProps: sessionId => (registration.inject ? registration.inject(sessionId) : {}) };
 }
 
-// Data shaped like the migrated demo-biz-repo assets, through the plugin's own tool contract.
+// Data shaped like a real project's migrated assets, through the plugin's own tool contract.
 const REPO = '/work/demo-biz-repo';
 const WORKSPACE = '/work/demo-workspace';   // the session's own workspace root, ≠ the repository
 const FIXTURES = {

@@ -37,7 +37,7 @@ def _clean_title(value, fallback):
 def derive_slug(title, taken):
     """A kebab-case directory name from a business sentence, without asking the user.
 
-    Latin tokens carry meaning (接口代号、产品代号); a Chinese-only title falls back to a short
+    Latin tokens carry meaning (an interface code, a product name); a Chinese-only title falls back to a short
     hash so paths stay ASCII while the readable title lives in play.json.
     """
     words = [word.lower() for word in re.findall(r"[A-Za-z][A-Za-z0-9]*", str(title or ""))][:4]

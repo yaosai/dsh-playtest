@@ -123,7 +123,7 @@ JSON
 
 ### 剧本
 
-`scenarioName` 就是界面上剧本列表显示的标题：写成**一句业务目标**（例：「整托 工作站下线批次回退全链路」），不要写目录名或接口名。`description` 是悬停/聚焦时展开的场景说明，长内容不会铺开在列表里。
+`scenarioName` 就是界面上剧本列表显示的标题：写成**一句业务目标**（例：「工作站下线后不应继续接单」），不要写目录名或接口名。`description` 是悬停/聚焦时展开的场景说明，长内容不会铺开在列表里。
 
 ```json
 {
@@ -185,18 +185,18 @@ JSON
 
 ### SQL Server 示例适配器
 
-`demo-biz-repo` 的接入位于 `tools/playtest-db/`：`adapter.py` 复用项目既有配置发现与本地解密，`PlaytestDbQuery.java` 用仓库已有 JDBC jar 执行参数化查询并输出 typed JSON。凭据只通过进程 stdin 传递，不写 argv、快照或临时文件；`--describe` 与 `--compile-check` 都不连接数据库。每条 SQL 会启动一次适配器进程，因此单步成本包含 JVM 冷启动；跨步骤复用连接属于后续工作。
+真实项目的接入通常放在项目自己的 `tools/playtest-db/`：`adapter.py` 复用项目既有配置发现与本地解密，`PlaytestDbQuery.java` 用仓库已有 JDBC jar 执行参数化查询并输出 typed JSON。凭据只通过进程 stdin 传递，不写 argv、快照或临时文件；`--describe` 与 `--compile-check` 都不连接数据库。每条 SQL 会启动一次适配器进程，因此单步成本包含 JVM 冷启动；跨步骤复用连接属于后续工作。
 
-## 已接入的真实场景：demo-biz-repo 工作站生命周期
+## 一个真实接入例子：工作站生命周期
 
-原 `docs/mock/station-lifecycle/mock_config.json` 保持不变，新协议资产位于 `demo-biz-repo/.test-plays/station-lifecycle/`：
+旧场景文件原样保留，新协议资产位于 `<项目仓库>/.test-plays/station-lifecycle/`：
 
 | 文件 | 用途 |
 |---|---|
 | `play.json` | 11 步业务流程：停接单→恢复→下线→复上线→重复上线被拒；文字 `expect` 改为显式 `expect.status/json` |
 | `scenario.json` | **严格原基线**：要求起点已 ONLINE+接单，否则前置失败即停（不自动归一化） |
 | `scenario-from-offline.json` | 起点离线的本地状态：先用业务接口 `loginWithRule` 上线，再播放；收尾恢复本轮记录到的原始字段 |
-| `scenario-current-code.json` | 把“下线后接单标志”预期改为 0（当前源码 `登出流程` 会先停接单），供业务确认后选用 |
+| `scenario-current-code.json` | 把“下线后接单标志”预期改为 0（当前实现的登出流程会先停接单），供业务确认后选用 |
 
 播放前用 `playtest(action="inspect")` 查看目标与效果；SQL Server 的每一步（含只读查询）都需要用户授权，因此该场景不能在无人值守下运行。收尾的 UPDATE 只在字段确实变化时写入，并单独核对；操作日志、站锁、暂存托盘归位等副作用不在恢复范围内，结果会明确写出这一点。
 
@@ -212,7 +212,7 @@ JSON
 | play 8–11 | 未执行：播放器在第 7 步按 fail-fast 停止，这是设计行为 |
 | cleanup 1–2 | 恢复 UPDATE 影响 0 行（起点本就是离线下线后同状态），核对断言通过；工作站回到本轮开始时记录的 OFF_LINET/0/NULL |
 
-这条差异是**基线漂移**：旧 `docs/mock` 场景断言下线后接单标志仍为 1，而当前实现的 `登出流程` 在下线前先停止接单。插件没有为了让结果变绿改写断言，而是保留失败结果，并把预期为 0 的候选基线单独放在 `scenario-current-code.json`；是否把它定为正式基线需要业务确认。该变体已改为“先业务上线再播放”，因此可以完整执行到步骤 11。
+这条差异是**基线漂移**：旧 `docs/mock` 场景断言下线后接单标志仍为 1，而当前实现的登出流程在下线前先停止接单。插件没有为了让结果变绿改写断言，而是保留失败结果，并把预期为 0 的候选基线单独放在 `scenario-current-code.json`；是否把它定为正式基线需要业务确认。该变体已改为“先业务上线再播放”，因此可以完整执行到步骤 11。
 
 
 
@@ -263,7 +263,7 @@ JSON
 
 ## 每轮唯一的短标识：`${runShort}`
 
-真实库的列宽会咬人：`bill_code` 只有 19 字，32 位 runId 塞不进去（SQL Server 直接 `String or binary data would be truncated`）。所以除 `${runId}`/`${runDir}` 外，播放器还提供 **`${runShort}`**：runId 去掉分隔符后的**末尾 12 位**。取尾部是因为引擎自生成的 id 形如 `20261113T183202-abcdef123459`——头部是时间戳，同几分钟内会重复。
+真实库的列宽会咬人：某个箱号列只有 19 字，32 位 runId 塞不进去（SQL Server 直接 `String or binary data would be truncated`）。所以除 `${runId}`/`${runDir}` 外，播放器还提供 **`${runShort}`**：runId 去掉分隔符后的**末尾 12 位**。取尾部是因为引擎自生成的 id 形如 `20261113T183202-abcdef123459`——头部是时间戳，同几分钟内会重复。
 
 `runId`、`runShort`、`runDir`、`mock` 都是保留名，场景变量不得覆盖。
 
@@ -296,7 +296,7 @@ JSON
 | 东西 | 放哪 | 为什么 |
 |---|---|---|
 | 服务在不在线、库能不能连 | `prepare`（仓库级，**只读**） | 全仓库共用；插件按方法/语句拦写（GET/HEAD/OPTIONS、SELECT），失败即 `blocked` 且保证没动过数据 |
-| 库位、货架、点位、物料、实现配置 | `scenario.setup`（**场景级，会写**） | 每种入库要的形状不同：整托 要可选点位与搬运自动完成配置，整箱 要 整箱 货架/库位与 整箱库 仓库地点配置 |
+| 库位、货架、点位、物料、实现配置 | `scenario.setup`（**场景级，会写**） | 同一流程的不同分支要的形状不同：整托分支要可选点位与搬运自动完成配置，整箱分支要货架/库位与仓库地点配置 |
 | 本轮造出来的数据怎么撤 | `scenario.cleanup` | 与 setup 成对，避免下次播放撞上轮 |
 
 把夹具塞进 `prepare` 会同时踩三个坑：写操作被 lint 拒绝；三种场景被迫共用一套夹具，差异没地方放；而"prepare 失败 = 什么都没动"这个承诺也不再成立。多个场景共用的主数据不必抄三份——写成剧本目录里的一个 `.sql`，各场景用 `sqlFile` 引用它（内容计入摘要，改了 SQL 旧预览就不能再播）。

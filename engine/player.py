@@ -557,7 +557,7 @@ class Runner:
     def play(self, item):
         self.item = item
         # `runShort` exists because real columns are narrow: a 32-hex runId does not fit an
-        # nvarchar(19) bill code. Tail, not head, because a self-generated id starts with a
+        # nvarchar(19) business code. Tail, not head, because a self-generated id starts with a
         # timestamp and would otherwise repeat across runs in the same few minutes.
         short = re.sub(r"[^0-9a-z]", "", self.run_id.lower())[-12:] or self.run_id[:12]
         self.variables = {"runId": self.run_id, "runShort": short, "runDir": str(self.run_dir)}
